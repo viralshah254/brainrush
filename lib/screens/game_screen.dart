@@ -25,30 +25,68 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   int? _selectedIndex;
   bool _answered = false;
   bool _isCorrect = false;
+  int _timeRemaining = 15; // 15 seconds per question
+  late AnimationController _timerController;
+  late Animation<double> _timerAnimation;
 
   @override
   void initState() {
     super.initState();
+    
+    _timerController = AnimationController(
+      duration: const Duration(seconds: 15),
+      vsync: this,
+    );
+
+    _timerAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_timerController)
+      ..addListener(() {
+        setState(() {
+          _timeRemaining = (15 * (1 - _timerController.value)).ceil();
+        });
+      });
+
+    _timerController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        // Time's up! Auto-submit wrong answer
+        if (!_answered) {
+          _handleAnswer(-1); // -1 means timeout
+        }
+      }
+    });
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<GameProvider>().startGame(
             category: widget.category,
             questionCount: widget.questionCount,
             mode: widget.mode,
           );
+      _timerController.forward();
     });
+  }
+
+  @override
+  void dispose() {
+    _timerController.dispose();
+    super.dispose();
   }
 
   void _handleAnswer(int index) {
     if (_answered) return;
 
+    // Stop the timer
+    _timerController.stop();
+
+    // Calculate time bonus (more time remaining = more bonus)
+    final timeBonus = _timeRemaining > 0 ? (_timeRemaining * 5) : 0;
+
     setState(() {
       _selectedIndex = index;
       _answered = true;
-      _isCorrect = context.read<GameProvider>().answerQuestion(index);
+      _isCorrect = context.read<GameProvider>().answerQuestion(index, timeBonus: timeBonus);
     });
 
     // Wait 2 seconds then move to next question or results
@@ -107,7 +145,11 @@ class _GameScreenState extends State<GameScreen> {
           _selectedIndex = null;
           _answered = false;
           _isCorrect = false;
+          _timeRemaining = 15;
         });
+        // Reset and start timer for next question
+        _timerController.reset();
+        _timerController.forward();
       }
     });
   }
@@ -134,7 +176,7 @@ class _GameScreenState extends State<GameScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Progress
+                  // Progress and Timer
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -145,6 +187,48 @@ class _GameScreenState extends State<GameScreen> {
                           fontSize: 16,
                         ),
                       ),
+                      // Timer
+                      AnimatedBuilder(
+                        animation: _timerAnimation,
+                        builder: (context, child) {
+                          final isLowTime = _timeRemaining <= 5;
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isLowTime
+                                  ? Colors.red.withOpacity(0.2)
+                                  : AppTheme.primaryNeon.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: isLowTime ? Colors.red : AppTheme.primaryNeon,
+                                width: 2,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.timer,
+                                  color: isLowTime ? Colors.red : AppTheme.primaryNeon,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${_timeRemaining}s',
+                                  style: TextStyle(
+                                    color: isLowTime ? Colors.red : AppTheme.primaryNeon,
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                       Text(
                         'Score: ${gameProvider.score}',
                         style: const TextStyle(
@@ -154,6 +238,47 @@ class _GameScreenState extends State<GameScreen> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Timer Progress Bar
+                  AnimatedBuilder(
+                    animation: _timerAnimation,
+                    builder: (context, child) {
+                      final isLowTime = _timeRemaining <= 5;
+                      return Stack(
+                        children: [
+                          Container(
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Colors.white10,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: _timerAnimation.value,
+                            child: Container(
+                              height: 8,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: isLowTime
+                                      ? [Colors.red, Colors.orange]
+                                      : [AppTheme.primaryNeon, AppTheme.accentNeon],
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (isLowTime ? Colors.red : AppTheme.primaryNeon)
+                                        .withOpacity(0.5),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                   const SizedBox(height: 20),
                   

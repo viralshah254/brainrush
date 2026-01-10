@@ -46,6 +46,7 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
       appBar: AppBar(
         title: const Text('Global Leagues'),
         backgroundColor: AppTheme.darkBg,
+        automaticallyImplyLeading: false,
       ),
       body: Column(
         children: [

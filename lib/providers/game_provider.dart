@@ -60,16 +60,23 @@ class GameProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool answerQuestion(int selectedIndex) {
+  bool answerQuestion(int selectedIndex, {int timeBonus = 0}) {
     if (currentQuestion == null) return false;
 
     final isCorrect = selectedIndex == currentQuestion!.correctIndex;
     
     if (isCorrect) {
       _correctAnswers++;
-      // Score based on mode
-      final points = _mode == GameMode.daily ? 200 : 100;
-      _score += points;
+      // Base score based on mode
+      int points = 100;
+      if (_mode == GameMode.daily) {
+        points = 200;
+      } else if (_mode == GameMode.league) {
+        points = 150;
+      }
+      
+      // Add time bonus (fast answers get more points)
+      _score += points + timeBonus;
     }
 
     return isCorrect;

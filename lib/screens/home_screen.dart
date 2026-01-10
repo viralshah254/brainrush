@@ -14,6 +14,12 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
+      appBar: AppBar(
+        title: const Text('BrainRush'),
+        backgroundColor: AppTheme.darkBg,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -22,6 +28,8 @@ class HomeScreen extends StatelessWidget {
             children: [
               _buildHeader(context),
               const SizedBox(height: 32),
+              _buildDailyChallengeCard(context),
+              const SizedBox(height: 16),
               _buildModeCard(
                 context,
                 title: 'Practice Mode',
@@ -235,6 +243,113 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             Icon(Icons.arrow_forward_ios, color: color, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDailyChallengeCard(BuildContext context) {
+    // Check if daily challenge is completed
+    final now = DateTime.now();
+    final todayKey = '${now.year}-${now.month}-${now.day}';
+    // Simple completion check (in production, use proper storage)
+    final isCompleted = false; // TODO: Check actual completion status
+
+    return GestureDetector(
+      onTap: isCompleted
+          ? null
+          : () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const GameScreen(
+                    category: 'Mixed',
+                    questionCount: 10,
+                    mode: GameMode.daily,
+                  ),
+                ),
+              );
+            },
+      child: Container(
+        height: 160,
+        decoration: BoxDecoration(
+          gradient: isCompleted
+              ? LinearGradient(
+                  colors: [Colors.grey.shade800, Colors.grey.shade700],
+                )
+              : const LinearGradient(
+                  colors: [AppTheme.warningNeon, AppTheme.secondaryNeon],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: isCompleted
+                  ? Colors.black26
+                  : AppTheme.warningNeon.withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                const Text(
+                  '⚡',
+                  style: TextStyle(fontSize: 32),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Daily Challenge',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      Text(
+                        isCompleted
+                            ? 'Completed! Come back tomorrow'
+                            : '10 questions • ⏱️ 15s each • Double points!',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (!isCompleted)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Text(
+                  'Start Now →',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              )
+            else
+              const Icon(Icons.check_circle, color: Colors.white, size: 32),
           ],
         ),
       ),

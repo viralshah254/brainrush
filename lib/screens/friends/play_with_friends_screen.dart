@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/room_service.dart';
 import '../../providers/user_provider.dart';
-import '../../models/room.dart';
 import '../multiplayer/multiplayer_lobby_screen.dart';
 
 class PlayWithFriendsScreen extends StatefulWidget {
