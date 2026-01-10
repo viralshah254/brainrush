@@ -1,0 +1,222 @@
+[
+  {
+    "id": "q001",
+    "text": "What is 2 + 2?",
+    "options": ["3", "4", "5", "6"],
+    "correctIndex": 1,
+    "correctAnswer": "4",
+    "explanation": "2 plus 2 equals 4. This is basic addition.",
+    "category": "Math",
+    "difficulty": "easy",
+    "topic": "arithmetic"
+  },
+  {
+    "id": "q002",
+    "text": "What is the capital of France?",
+    "options": ["London", "Berlin", "Paris", "Rome"],
+    "correctIndex": 2,
+    "correctAnswer": "Paris",
+    "explanation": "Paris is the capital and largest city of France.",
+    "category": "Geography",
+    "difficulty": "easy",
+    "topic": "capitals"
+  },
+  {
+    "id": "q003",
+    "text": "What is the chemical symbol for water?",
+    "options": ["H2O", "CO2", "O2", "H2"],
+    "correctIndex": 0,
+    "correctAnswer": "H2O",
+    "explanation": "Water is composed of two hydrogen atoms and one oxygen atom, hence H2O.",
+    "category": "Science",
+    "difficulty": "easy",
+    "topic": "chemistry"
+  },
+  {
+    "id": "q004",
+    "text": "Who wrote Romeo and Juliet?",
+    "options": ["Charles Dickens", "William Shakespeare", "Jane Austen", "Mark Twain"],
+    "correctIndex": 1,
+    "correctAnswer": "William Shakespeare",
+    "explanation": "Romeo and Juliet is a tragedy written by William Shakespeare in the late 16th century.",
+    "category": "Literature",
+    "difficulty": "easy",
+    "topic": "classic literature"
+  },
+  {
+    "id": "q005",
+    "text": "In what year did World War II end?",
+    "options": ["1943", "1944", "1945", "1946"],
+    "correctIndex": 2,
+    "correctAnswer": "1945",
+    "explanation": "World War II ended in 1945 with Germany surrendering in May and Japan in September.",
+    "category": "History",
+    "difficulty": "easy",
+    "topic": "world wars"
+  },
+  {
+    "id": "q006",
+    "text": "What is 15 × 8?",
+    "options": ["110", "120", "130", "140"],
+    "correctIndex": 1,
+    "correctAnswer": "120",
+    "explanation": "15 multiplied by 8 equals 120.",
+    "category": "Math",
+    "difficulty": "medium",
+    "topic": "multiplication"
+  },
+  {
+    "id": "q007",
+    "text": "Which planet is known as the Red Planet?",
+    "options": ["Venus", "Mars", "Jupiter", "Saturn"],
+    "correctIndex": 1,
+    "correctAnswer": "Mars",
+    "explanation": "Mars is called the Red Planet because of the iron oxide (rust) on its surface.",
+    "category": "Science",
+    "difficulty": "easy",
+    "topic": "astronomy"
+  },
+  {
+    "id": "q008",
+    "text": "What is the largest ocean on Earth?",
+    "options": ["Atlantic Ocean", "Indian Ocean", "Arctic Ocean", "Pacific Ocean"],
+    "correctIndex": 3,
+    "correctAnswer": "Pacific Ocean",
+    "explanation": "The Pacific Ocean is the largest and deepest ocean, covering about 63 million square miles.",
+    "category": "Geography",
+    "difficulty": "easy",
+    "topic": "oceans"
+  },
+  {
+    "id": "q009",
+    "text": "Who painted the Mona Lisa?",
+    "options": ["Vincent van Gogh", "Pablo Picasso", "Leonardo da Vinci", "Michelangelo"],
+    "correctIndex": 2,
+    "correctAnswer": "Leonardo da Vinci",
+    "explanation": "The Mona Lisa was painted by Leonardo da Vinci in the early 16th century.",
+    "category": "Literature",
+    "difficulty": "easy",
+    "topic": "art history"
+  },
+  {
+    "id": "q010",
+    "text": "What is the square root of 144?",
+    "options": ["10", "11", "12", "13"],
+    "correctIndex": 2,
+    "correctAnswer": "12",
+    "explanation": "12 × 12 = 144, so the square root of 144 is 12.",
+    "category": "Math",
+    "difficulty": "easy",
+    "topic": "square roots"
+  },
+  {
+    "id": "q011",
+    "text": "How many continents are there?",
+    "options": ["5", "6", "7", "8"],
+    "correctIndex": 2,
+    "correctAnswer": "7",
+    "explanation": "There are 7 continents: Africa, Antarctica, Asia, Australia, Europe, North America, and South America.",
+    "category": "Geography",
+    "difficulty": "easy",
+    "topic": "continents"
+  },
+  {
+    "id": "q012",
+    "text": "What is the speed of light?",
+    "options": ["299,792,458 m/s", "150,000,000 m/s", "300,000 m/s", "1,000,000 m/s"],
+    "correctIndex": 0,
+    "correctAnswer": "299,792,458 m/s",
+    "explanation": "Light travels at approximately 299,792,458 meters per second in a vacuum.",
+    "category": "Science",
+    "difficulty": "hard",
+    "topic": "physics"
+  },
+  {
+    "id": "q013",
+    "text": "Who was the first President of the United States?",
+    "options": ["Thomas Jefferson", "George Washington", "John Adams", "Benjamin Franklin"],
+    "correctIndex": 1,
+    "correctAnswer": "George Washington",
+    "explanation": "George Washington served as the first President of the United States from 1789 to 1797.",
+    "category": "History",
+    "difficulty": "easy",
+    "topic": "US presidents"
+  },
+  {
+    "id": "q014",
+    "text": "What is 50% of 200?",
+    "options": ["50", "75", "100", "150"],
+    "correctIndex": 2,
+    "correctAnswer": "100",
+    "explanation": "50% means half, so half of 200 is 100.",
+    "category": "Math",
+    "difficulty": "easy",
+    "topic": "percentages"
+  },
+  {
+    "id": "q015",
+    "text": "Which element has the atomic number 1?",
+    "options": ["Helium", "Hydrogen", "Oxygen", "Carbon"],
+    "correctIndex": 1,
+    "correctAnswer": "Hydrogen",
+    "explanation": "Hydrogen has an atomic number of 1, meaning it has one proton in its nucleus.",
+    "category": "Science",
+    "difficulty": "medium",
+    "topic": "periodic table"
+  },
+  {
+    "id": "q016",
+    "text": "What is the longest river in the world?",
+    "options": ["Amazon", "Nile", "Yangtze", "Mississippi"],
+    "correctIndex": 1,
+    "correctAnswer": "Nile",
+    "explanation": "The Nile River in Africa is generally considered the longest river at about 6,650 km.",
+    "category": "Geography",
+    "difficulty": "medium",
+    "topic": "rivers"
+  },
+  {
+    "id": "q017",
+    "text": "Who invented the telephone?",
+    "options": ["Thomas Edison", "Alexander Graham Bell", "Nikola Tesla", "Benjamin Franklin"],
+    "correctIndex": 1,
+    "correctAnswer": "Alexander Graham Bell",
+    "explanation": "Alexander Graham Bell is credited with inventing and patenting the telephone in 1876.",
+    "category": "History",
+    "difficulty": "easy",
+    "topic": "inventions"
+  },
+  {
+    "id": "q018",
+    "text": "What is 7 × 9?",
+    "options": ["56", "63", "72", "81"],
+    "correctIndex": 1,
+    "correctAnswer": "63",
+    "explanation": "7 multiplied by 9 equals 63.",
+    "category": "Math",
+    "difficulty": "easy",
+    "topic": "multiplication"
+  },
+  {
+    "id": "q019",
+    "text": "Which gas do plants absorb from the atmosphere?",
+    "options": ["Oxygen", "Nitrogen", "Carbon Dioxide", "Hydrogen"],
+    "correctIndex": 2,
+    "correctAnswer": "Carbon Dioxide",
+    "explanation": "Plants absorb carbon dioxide during photosynthesis and release oxygen.",
+    "category": "Science",
+    "difficulty": "easy",
+    "topic": "biology"
+  },
+  {
+    "id": "q020",
+    "text": "What is the capital of Japan?",
+    "options": ["Beijing", "Seoul", "Tokyo", "Bangkok"],
+    "correctIndex": 2,
+    "correctAnswer": "Tokyo",
+    "explanation": "Tokyo is the capital and largest city of Japan.",
+    "category": "Geography",
+    "difficulty": "easy",
+    "topic": "capitals"
+  }
+]

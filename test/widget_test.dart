@@ -4,7 +4,7 @@ import 'package:brainrush/main.dart';
 
 void main() {
   testWidgets('App launches', (WidgetTester tester) async {
-    await tester.pumpWidget(const BrainRushApp());
+    await tester.pumpWidget(const BrainzRushApp());
     expect(find.byType(MaterialApp), findsOneWidget);
   });
 }

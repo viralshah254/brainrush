@@ -11,6 +11,8 @@ class AppTheme {
   static const Color accentNeon = Color(0xFF8338EC);     // Purple
   static const Color successNeon = Color(0xFF00FF00);    // Green
   static const Color warningNeon = Color(0xFFFFBE0B);    // Yellow
+  static const Color errorNeon = Color(0xFFFF006E);      // Red/Pink for errors
+  static const Color darkSurface = Color(0xFF1A1F3A);    // Slightly lighter than darkCard
   
   static const LinearGradient primaryGradient = LinearGradient(
     colors: [primaryNeon, accentNeon],

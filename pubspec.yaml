@@ -1,8 +1,8 @@
 name: brainrush
-description: "Educational speed quiz game"
+description: "Brainz Rush - Educational speed quiz game"
 publish_to: 'none'
 
-version: 1.0.0+2
+version: 1.0.2+1
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -16,6 +16,16 @@ dependencies:
   
   # UI
   cupertino_icons: ^1.0.2
+  confetti: ^0.7.0
+  
+  # Storage & Networking
+  shared_preferences: ^2.2.2
+  http: ^1.1.0
+  uuid: ^4.2.1
+  
+  # Ads & Monetization
+  google_mobile_ads: ^5.2.0
+  in_app_purchase: ^3.1.13
 
 dev_dependencies:
   flutter_test:
@@ -24,3 +34,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  
+  assets:
+    - assets/questions/questions.json

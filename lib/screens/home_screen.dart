@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
+import '../providers/mode_provider.dart';
 import '../theme/app_theme.dart';
+import '../models/app_mode.dart';
 import 'game_screen.dart';
 import 'leagues/leagues_screen.dart';
 import 'friends/play_with_friends_screen.dart';
+import 'campaign/campaign_screen.dart';
+import 'education/education_settings_screen.dart';
 import '../providers/game_provider.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -15,7 +19,7 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('BrainRush'),
+        title: const Text('Brainz Rush'),
         backgroundColor: AppTheme.darkBg,
         elevation: 0,
         automaticallyImplyLeading: false,
@@ -27,8 +31,26 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildHeader(context),
-              const SizedBox(height: 32),
+              const SizedBox(height: 20),
+              _buildModeToggle(context),
+              const SizedBox(height: 24),
               _buildDailyChallengeCard(context),
+              const SizedBox(height: 16),
+              _buildModeCard(
+                context,
+                title: 'Campaign Mode',
+                subtitle: '500 rounds • Epic journey • Earn stars',
+                emoji: '🎮',
+                color: Colors.purple,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const CampaignScreen(),
+                    ),
+                  );
+                },
+              ),
               const SizedBox(height: 16),
               _buildModeCard(
                 context,
@@ -186,6 +208,141 @@ class HomeScreen extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Widget _buildModeToggle(BuildContext context) {
+    return Consumer<ModeProvider>(
+      builder: (context, modeProvider, _) {
+        return Container(
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppTheme.darkCard,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.primaryNeon.withOpacity(0.2)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _buildModeButton(
+                  context,
+                  'General',
+                  Icons.psychology,
+                  modeProvider.currentMode == AppMode.general,
+                  () => modeProvider.switchMode(AppMode.general),
+                ),
+              ),
+              Expanded(
+                child: _buildModeButton(
+                  context,
+                  'Education',
+                  Icons.school,
+                  modeProvider.currentMode == AppMode.education,
+                  () => _handleEducationModeSwitch(context, modeProvider),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildModeButton(
+    BuildContext context,
+    String label,
+    IconData icon,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppTheme.primaryNeon : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? AppTheme.darkBg : Colors.white54,
+              size: 18,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isSelected ? AppTheme.darkBg : Colors.white54,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _handleEducationModeSwitch(
+    BuildContext context,
+    ModeProvider modeProvider,
+  ) async {
+    final userProvider = context.read<UserProvider>();
+    final user = userProvider.user;
+
+    // Check if user has education profile setup
+    if (user?.gradeLevel == null || user?.age == null) {
+      // Show setup prompt
+      final shouldSetup = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.darkCard,
+          title: const Text(
+            '🎓 Education Mode',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Set up your education profile to get grade-appropriate questions and exam prep!',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Maybe Later'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNeon,
+              ),
+              child: const Text(
+                'Set Up',
+                style: TextStyle(color: AppTheme.darkBg),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldSetup == true && context.mounted) {
+        // Navigate to education settings
+        final result = await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const EducationSettingsScreen(),
+          ),
+        );
+
+        if (result == true || context.mounted) {
+          // Settings saved, switch mode
+          await modeProvider.switchMode(AppMode.education);
+        }
+      }
+    } else {
+      // Profile already set up, just switch
+      await modeProvider.switchMode(AppMode.education);
+    }
   }
 
   Widget _buildModeCard(

@@ -4,6 +4,9 @@ import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
 import '../theme/app_theme.dart';
 import '../services/room_service.dart';
+import '../services/ad_service.dart';
+import '../services/premium_service.dart';
+import '../widgets/ad_loading_dialog.dart';
 import 'results_screen.dart';
 import 'multiplayer/multiplayer_results_screen.dart';
 
@@ -74,7 +77,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _handleAnswer(int index) {
+  Future<void> _handleAnswer(int index) async {
     if (_answered) return;
 
     // Stop the timer
@@ -83,16 +86,79 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     // Calculate time bonus (more time remaining = more bonus)
     final timeBonus = _timeRemaining > 0 ? (_timeRemaining * 5) : 0;
 
+    final gameProvider = context.read<GameProvider>();
+    final isCorrect = gameProvider.answerQuestion(index, timeBonus: timeBonus);
+
     setState(() {
       _selectedIndex = index;
+      _isCorrect = isCorrect;
+    });
+
+    // If answer is WRONG, show Try Again dialog BEFORE showing correct answer
+    if (!isCorrect) {
+      final premiumService = context.read<PremiumService>();
+      
+      if (!premiumService.isPremium) {
+        // Show try again dialog
+        final shouldTryAgain = await _showTryAgainDialog();
+        
+        if (shouldTryAgain == true) {
+          // User wants to try again - show ad
+          final adService = context.read<AdService>();
+          
+          // Show loading dialog
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => const AdLoadingDialog(
+              message: 'Loading ad...',
+            ),
+          );
+
+          // Try to load and show ad
+          final watched = await adService.showTryAgainAd();
+          
+          // Close loading dialog
+          if (!mounted) return;
+          Navigator.of(context).pop();
+          
+          if (watched) {
+            // Reset for another try
+            setState(() {
+              _selectedIndex = null;
+              _answered = false;
+              _isCorrect = false;
+              _timeRemaining = 15;
+            });
+            _timerController.forward(from: 0.0);
+            return; // Exit early, don't move to next question
+          } else {
+            // Show error dialog
+            if (!mounted) return;
+            await showDialog(
+              context: context,
+              builder: (context) => AdFailedDialog(
+                message: 'Unable to load ad at this time.',
+                onContinue: () => Navigator.of(context).pop(),
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    // Now mark as answered and show correct answer
+    setState(() {
       _answered = true;
-      _isCorrect = context.read<GameProvider>().answerQuestion(index, timeBonus: timeBonus);
     });
 
     // Wait 2 seconds then move to next question or results
-    Future.delayed(const Duration(seconds: 2), () async {
-      final gameProvider = context.read<GameProvider>();
-      
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (!mounted) return;
+
+    {
       if (gameProvider.isGameOver) {
         // Update user stats
         context.read<UserProvider>().updateStats(
@@ -136,6 +202,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               score: gameProvider.score,
               totalQuestions: gameProvider.totalQuestions,
               correctAnswers: gameProvider.correctAnswers,
+              mode: widget.mode,
+              category: widget.category,
             ),
           ),
         );
@@ -151,7 +219,67 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         _timerController.reset();
         _timerController.forward();
       }
-    });
+    }
+  }
+
+  Future<bool?> _showTryAgainDialog() async {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.darkCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+            side: BorderSide(color: AppTheme.primaryNeon.withOpacity(0.5), width: 2),
+          ),
+          title: Text(
+            '❌ Wrong Answer!',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppTheme.errorNeon,
+                  fontWeight: FontWeight.bold,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.sentiment_dissatisfied, color: AppTheme.errorNeon, size: 60),
+              const SizedBox(height: 20),
+              Text(
+                'Want to try again? Watch a short ad for another chance!',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.spaceEvenly,
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text(
+                'Skip',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Colors.white60),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.replay, color: AppTheme.darkBg),
+              label: Text(
+                'Try Again (Ad)',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppTheme.darkBg),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNeon,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
