@@ -35,6 +35,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   int _timeRemaining = 15; // 15 seconds per question
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
+  bool _extraTimeUsed = false; // Track if extra time ad has been used for current question
 
   @override
   void initState() {
@@ -130,6 +131,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               _answered = false;
               _isCorrect = false;
               _timeRemaining = 15;
+              _extraTimeUsed = false; // Reset extra time for retry
             });
             _timerController.forward(from: 0.0);
             return; // Exit early, don't move to next question
@@ -214,12 +216,74 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
           _answered = false;
           _isCorrect = false;
           _timeRemaining = 15;
+          _extraTimeUsed = false; // Reset extra time for next question
         });
         // Reset and start timer for next question
         _timerController.reset();
         _timerController.forward();
       }
     }
+  }
+
+  Future<void> _handleExtraTime() async {
+    if (_extraTimeUsed) return; // Already used for this question
+    
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get extra time without ads
+      _addExtraTime();
+      return;
+    }
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AdLoadingDialog(
+        message: 'Loading ad...',
+      ),
+    );
+
+    // Try to show ad
+    final adShown = await adService.showTryAgainAd();
+    
+    if (!mounted) return;
+    
+    // Dismiss loading dialog
+    Navigator.of(context).pop();
+    
+    if (adShown) {
+      // Ad watched successfully - add extra time
+      _addExtraTime();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ +10 seconds added!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+  
+  void _addExtraTime() {
+    setState(() {
+      _extraTimeUsed = true;
+      _timeRemaining += 10; // Add 10 seconds
+      
+      // Adjust the timer controller
+      final currentValue = _timerController.value;
+      final newValue = (currentValue - (10.0 / 15.0)).clamp(0.0, 1.0);
+      
+      _timerController.stop();
+      _timerController.value = newValue;
+      _timerController.forward();
+    });
   }
 
   Future<bool?> _showTryAgainDialog() async {
@@ -315,8 +379,44 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                           fontSize: 16,
                         ),
                       ),
-                      // Timer
-                      AnimatedBuilder(
+                      Row(
+                        children: [
+                          // Extra Time Button
+                          if (!_answered && !_extraTimeUsed && _timeRemaining <= 10)
+                            GestureDetector(
+                              onTap: _handleExtraTime,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                margin: const EdgeInsets.only(right: 8),
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [Colors.amber, Colors.orange],
+                                  ),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(
+                                      Icons.add_alarm,
+                                      color: Colors.white,
+                                      size: 16,
+                                    ),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '+10s',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          // Timer
+                          AnimatedBuilder(
                         animation: _timerAnimation,
                         builder: (context, child) {
                           final isLowTime = _timeRemaining <= 5;
@@ -357,15 +457,19 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                           );
                         },
                       ),
-                      Text(
-                        'Score: ${gameProvider.score}',
-                        style: const TextStyle(
-                          color: AppTheme.primaryNeon,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        ],
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Score
+                  Text(
+                    'Score: ${gameProvider.score}',
+                    style: const TextStyle(
+                      color: AppTheme.primaryNeon,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   // Timer Progress Bar

@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import '../theme/app_theme.dart';
 import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
+import '../models/daily_reward.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int score;
@@ -105,6 +106,24 @@ class _ResultsScreenState extends State<ResultsScreen>
     // Update streak if daily challenge
     if (widget.mode == GameMode.daily && widget.correctAnswers > 0) {
       userProvider.incrementStreak();
+      
+      // Add daily reward
+      final todayReward = DailyReward.getTodaysReward();
+      switch (todayReward.type) {
+        case RewardType.coins:
+          userProvider.addCoins(todayReward.amount);
+          break;
+        case RewardType.lives:
+          // TODO: Implement lives system
+          break;
+        case RewardType.hints:
+          // TODO: Implement hints system
+          break;
+        case RewardType.doubleXP:
+        case RewardType.adFree:
+          // TODO: Implement buffs system
+          break;
+      }
     }
   }
 
@@ -295,10 +314,19 @@ class _ResultsScreenState extends State<ResultsScreen>
                     ),
                   ),
                   const SizedBox(height: 24),
+                  
+                  // Daily Reward (if daily challenge)
+                  if (widget.mode == GameMode.daily)
+                    SlideTransition(
+                      position: _cardAnimations[3],
+                      child: _buildDailyRewardCard(),
+                    ),
+                  if (widget.mode == GameMode.daily)
+                    const SizedBox(height: 24),
 
                   // Performance Summary
                   SlideTransition(
-                    position: _cardAnimations[3],
+                    position: _cardAnimations[widget.mode == GameMode.daily ? 4 : 3],
                     child: Container(
                       padding: const EdgeInsets.all(20),
                       decoration: BoxDecoration(
@@ -533,6 +561,78 @@ class _ResultsScreenState extends State<ResultsScreen>
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDailyRewardCard() {
+    final todayReward = DailyReward.getTodaysReward();
+    final dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    final dayName = dayNames[todayReward.dayOfWeek - 1];
+    
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.purple.withOpacity(0.3),
+            Colors.pink.withOpacity(0.3),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.purple.withOpacity(0.5), width: 2),
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                todayReward.emoji,
+                style: const TextStyle(fontSize: 48),
+              ),
+              const SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Daily Reward!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  Text(
+                    dayName,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            decoration: BoxDecoration(
+              color: AppTheme.darkBg.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              todayReward.description,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
