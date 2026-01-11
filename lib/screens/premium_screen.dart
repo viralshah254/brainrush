@@ -11,7 +11,7 @@ class PremiumScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('Brainz Rush Premium'),
+        title: const Text('MindRush Premium'),
         backgroundColor: AppTheme.darkBg,
       ),
       body: Consumer<PremiumService>(
@@ -132,7 +132,7 @@ class PremiumScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Unlock the full Brainz Rush experience',
+                  'Unlock the full MindRush experience',
                   style: TextStyle(
                     fontSize: 16,
                     color: Colors.white,

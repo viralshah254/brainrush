@@ -1,6 +1,8 @@
-# brainrush
+# MindRush
 
-A new Flutter project.
+**Play smarter. Learn faster.**
+
+An educational quiz game that makes learning fun and engaging.
 
 ## Getting Started
 

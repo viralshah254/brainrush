@@ -1,4 +1,4 @@
-package com.example.brainrush
+package com.dvtechventures.mindrush
 
 import io.flutter.embedding.android.FlutterActivity
 

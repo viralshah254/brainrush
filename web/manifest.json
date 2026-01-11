@@ -1,11 +1,11 @@
 {
-    "name": "brainrush",
-    "short_name": "brainrush",
+    "name": "MindRush",
+    "short_name": "MindRush",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "Play smarter. Learn faster. Educational quiz game.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

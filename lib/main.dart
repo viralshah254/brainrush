@@ -51,11 +51,11 @@ void main() async {
     print('⚠️ Education subscriptions not available (Simulator) - Education subscriptions disabled');
   }
 
-  runApp(const BrainzRushApp());
+  runApp(const MindRushApp());
 }
 
-class BrainzRushApp extends StatelessWidget {
-  const BrainzRushApp({super.key});
+class MindRushApp extends StatelessWidget {
+  const MindRushApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -87,7 +87,7 @@ class BrainzRushApp extends StatelessWidget {
         ),
       ],
       child: MaterialApp(
-        title: 'Brainz Rush',
+        title: 'MindRush',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         home: const SplashScreen(),

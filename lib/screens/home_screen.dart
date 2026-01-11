@@ -12,15 +12,60 @@ import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
 import '../providers/game_provider.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  String _countdown = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    
+    _updateCountdown();
+    // Update countdown every second
+    Future.delayed(const Duration(seconds: 1), _updateCountdown);
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _updateCountdown() {
+    if (!mounted) return;
+    
+    final now = DateTime.now();
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
+    final difference = tomorrow.difference(now);
+    
+    setState(() {
+      final hours = difference.inHours;
+      final minutes = difference.inMinutes.remainder(60);
+      final seconds = difference.inSeconds.remainder(60);
+      _countdown = '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    });
+    
+    // Continue updating
+    Future.delayed(const Duration(seconds: 1), _updateCountdown);
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('Brainz Rush'),
+        title: const Text('MindRush'),
         backgroundColor: AppTheme.darkBg,
         elevation: 0,
         automaticallyImplyLeading: false,
@@ -60,56 +105,11 @@ class HomeScreen extends StatelessWidget {
 
         return Column(
           children: [
-            Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: AppTheme.primaryGradient,
-                  ),
-                  child: Center(
-                    child: Text(
-                      user.username[0].toUpperCase(),
-                      style: const TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.darkBg,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user.username,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      const Text(
-                        'Keep that brain fresh! 🧠',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white70,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
+            // Enhanced stats row with better coins design
             Row(
               children: [
                 Expanded(
-                  child: _buildStatCard('💰', user.coins.toString(), 'Coins'),
+                  child: _buildEnhancedCoinsCard(user.coins),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -128,6 +128,76 @@ class HomeScreen extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildEnhancedCoinsCard(int coins) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.amber.shade700,
+            Colors.amber.shade500,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              // Glow effect
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.3),
+                ),
+              ),
+              const Text(
+                '💰',
+                style: TextStyle(fontSize: 28),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            coins.toString(),
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              shadows: [
+                Shadow(
+                  color: Colors.black38,
+                  offset: Offset(0, 2),
+                  blurRadius: 4,
+                ),
+              ],
+            ),
+          ),
+          const Text(
+            'Coins',
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -298,6 +368,92 @@ class HomeScreen extends StatelessWidget {
     }
   }
 
+  Widget _buildAnimatedCampaignCard(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: 1.0 + (_animationController.value * 0.015),
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const CampaignScreen(),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.purple.shade400,
+                    Colors.purple.shade600,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.purple.shade400.withOpacity(0.4),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Center(
+                      child: Text('🎮', style: TextStyle(fontSize: 28)),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Campaign Mode',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '500 rounds • Epic journey • Earn stars',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.white.withOpacity(0.7),
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildModeCard(
     BuildContext context, {
     required String title,
@@ -306,70 +462,165 @@ class HomeScreen extends StatelessWidget {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: AppTheme.darkCard,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _animationController.value * -2),
+          child: GestureDetector(
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(12),
+                color: AppTheme.darkCard,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: color.withOpacity(0.3)),
               ),
-              child: Center(
-                child: Text(emoji, style: const TextStyle(fontSize: 28)),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                  Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Center(
+                      child: Text(emoji, style: const TextStyle(fontSize: 28)),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.white60,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          subtitle,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.white60,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  Icon(Icons.arrow_forward_ios, color: color, size: 20),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios, color: color, size: 20),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildDailyChallengeCard(BuildContext context) {
     // Check if daily challenge is completed
+    final userProvider = context.watch<UserProvider>();
+    final user = userProvider.user;
     final now = DateTime.now();
-    final todayKey = '${now.year}-${now.month}-${now.day}';
-    // Simple completion check (in production, use proper storage)
-    final isCompleted = false; // TODO: Check actual completion status
+    final lastChallenge = user?.lastDailyChallenge ?? DateTime(2000);
+    final today = DateTime(now.year, now.month, now.day);
+    final lastDay = DateTime(lastChallenge.year, lastChallenge.month, lastChallenge.day);
+    final isCompleted = today == lastDay;
 
-    return GestureDetector(
-      onTap: isCompleted
-          ? null
-          : () {
+    // If completed, show countdown card instead
+    if (isCompleted) {
+      return AnimatedBuilder(
+        animation: _animationController,
+        builder: (context, child) {
+          return Transform.scale(
+            scale: 1.0 + (_animationController.value * 0.02),
+            child: Container(
+              height: 160,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.purple.shade800,
+                    Colors.purple.shade600,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: Colors.purple.shade400,
+                  width: 2,
+                ),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('✅', style: TextStyle(fontSize: 32)),
+                      SizedBox(width: 12),
+                      Text(
+                        'Challenge Complete!',
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Next challenge in:',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _countdown,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
+
+    // Show active daily challenge with animation
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Transform.translate(
+          offset: Offset(0, _animationController.value * -5),
+          child: GestureDetector(
+            onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -381,88 +632,83 @@ class HomeScreen extends StatelessWidget {
                 ),
               );
             },
-      child: Container(
-        height: 160,
-        decoration: BoxDecoration(
-          gradient: isCompleted
-              ? LinearGradient(
-                  colors: [Colors.grey.shade800, Colors.grey.shade700],
-                )
-              : const LinearGradient(
+            child: Container(
+              height: 160,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
                   colors: [AppTheme.warningNeon, AppTheme.secondaryNeon],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: isCompleted
-                  ? Colors.black26
-                  : AppTheme.warningNeon.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                const Text(
-                  '⚡',
-                  style: TextStyle(fontSize: 32),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.warningNeon.withOpacity(0.4),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
                     children: [
                       const Text(
-                        'Daily Challenge',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                        '⚡',
+                        style: TextStyle(fontSize: 32),
                       ),
-                      Text(
-                        isCompleted
-                            ? 'Completed! Come back tomorrow'
-                            : '10 questions • ⏱️ 15s each • Double points!',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.white.withOpacity(0.9),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Daily Challenge',
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              '10 questions • ⏱️ 15s each • Double points!',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                ),
-              ],
+                  if (!isCompleted)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Text(
+                        'Start Now →',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    )
+                  else
+                    const Icon(Icons.check_circle, color: Colors.white, size: 32),
+                ],
+              ),
             ),
-            if (!isCompleted)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: const Text(
-                  'Start Now →',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              )
-            else
-              const Icon(Icons.check_circle, color: Colors.white, size: 32),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -470,21 +716,7 @@ class HomeScreen extends StatelessWidget {
     return [
       _buildDailyChallengeCard(context),
       const SizedBox(height: 16),
-      _buildModeCard(
-        context,
-        title: 'Campaign Mode',
-        subtitle: '500 rounds • Epic journey • Earn stars',
-        emoji: '🎮',
-        color: Colors.purple,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const CampaignScreen(),
-            ),
-          );
-        },
-      ),
+      _buildAnimatedCampaignCard(context),
       const SizedBox(height: 16),
       _buildModeCard(
         context,
