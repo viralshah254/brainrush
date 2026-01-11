@@ -11,7 +11,20 @@ class PremiumScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('MindRush Premium'),
+        title: Row(
+          children: [
+            ClipOval(
+              child: Image.asset(
+                'assets/images/mindrush_logo.png',
+                width: 32,
+                height: 32,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('MindRush Premium'),
+          ],
+        ),
         backgroundColor: AppTheme.darkBg,
       ),
       body: Consumer<PremiumService>(

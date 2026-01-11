@@ -160,68 +160,70 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     
     if (!mounted) return;
 
-    {
-      if (gameProvider.isGameOver) {
-        // Update user stats
-        context.read<UserProvider>().updateStats(
-              questionsAnswered: gameProvider.totalQuestions,
-              correctAnswers: gameProvider.correctAnswers,
-              score: gameProvider.score,
-            );
+    // Move to next question first to update the index
+    gameProvider.nextQuestion();
+    
+    // Now check if game is over (after incrementing)
+    if (gameProvider.isGameOver) {
+      // Update user stats
+      context.read<UserProvider>().updateStats(
+            questionsAnswered: gameProvider.totalQuestions,
+            correctAnswers: gameProvider.correctAnswers,
+            score: gameProvider.score,
+          );
 
-        // If multiplayer, update room score and show multiplayer results
-        if (widget.mode == GameMode.multiplayer && widget.roomCode != null) {
-          final room = await RoomService().getRoom(widget.roomCode!);
-          if (room != null) {
-            await RoomService().updatePlayerScore(
-              widget.roomCode!,
-              context.read<UserProvider>().user!.id,
-              gameProvider.score,
-            );
-            
-            final updatedRoom = await RoomService().getRoom(widget.roomCode!);
-            if (updatedRoom != null && mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MultiplayerResultsScreen(
-                    room: updatedRoom,
-                    myScore: gameProvider.score,
-                  ),
+      // If multiplayer, update room score and show multiplayer results
+      if (widget.mode == GameMode.multiplayer && widget.roomCode != null) {
+        final room = await RoomService().getRoom(widget.roomCode!);
+        if (room != null) {
+          await RoomService().updatePlayerScore(
+            widget.roomCode!,
+            context.read<UserProvider>().user!.id,
+            gameProvider.score,
+          );
+          
+          final updatedRoom = await RoomService().getRoom(widget.roomCode!);
+          if (updatedRoom != null && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MultiplayerResultsScreen(
+                  room: updatedRoom,
+                  myScore: gameProvider.score,
                 ),
-              );
-              return;
-            }
+              ),
+            );
+            return;
           }
         }
-
-        // Navigate to regular results
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ResultsScreen(
-              score: gameProvider.score,
-              totalQuestions: gameProvider.totalQuestions,
-              correctAnswers: gameProvider.correctAnswers,
-              mode: widget.mode,
-              category: widget.category,
-            ),
-          ),
-        );
-      } else {
-        gameProvider.nextQuestion();
-        setState(() {
-          _selectedIndex = null;
-          _answered = false;
-          _isCorrect = false;
-          _timeRemaining = 15;
-          _extraTimeUsed = false; // Reset extra time for next question
-        });
-        // Reset and start timer for next question
-        _timerController.reset();
-        _timerController.forward();
       }
+
+      // Navigate to regular results
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultsScreen(
+            score: gameProvider.score,
+            totalQuestions: gameProvider.totalQuestions,
+            correctAnswers: gameProvider.correctAnswers,
+            mode: widget.mode,
+            category: widget.category,
+          ),
+        ),
+      );
+    } else {
+      // Reset state for next question
+      setState(() {
+        _selectedIndex = null;
+        _answered = false;
+        _isCorrect = false;
+        _timeRemaining = 15;
+        _extraTimeUsed = false; // Reset extra time for next question
+      });
+      // Reset and start timer for next question
+      _timerController.reset();
+      _timerController.forward();
     }
   }
 

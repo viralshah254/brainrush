@@ -153,23 +153,24 @@ class _SplashScreenState extends State<SplashScreen>
                           return Transform.scale(
                             scale: _pulseAnimation.value,
                             child: Container(
-                              width: 120,
-                              height: 120,
+                              width: 180,
+                              height: 180,
                               decoration: BoxDecoration(
-                                gradient: AppTheme.primaryGradient,
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppTheme.primaryNeon.withOpacity(0.5),
-                                    blurRadius: 40,
-                                    spreadRadius: 10,
+                                    color: AppTheme.primaryNeon.withOpacity(0.6),
+                                    blurRadius: 50,
+                                    spreadRadius: 15,
                                   ),
                                 ],
                               ),
-                              child: const Center(
-                                child: Text(
-                                  '🧠',
-                                  style: TextStyle(fontSize: 60),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/images/mindrush_logo.png',
+                                  width: 180,
+                                  height: 180,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                             ),

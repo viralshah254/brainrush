@@ -65,7 +65,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('MindRush'),
+        title: Row(
+          children: [
+            // MindRush logo
+            ClipOval(
+              child: Image.asset(
+                'assets/images/mindrush_logo.png',
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('MindRush'),
+          ],
+        ),
         backgroundColor: AppTheme.darkBg,
         elevation: 0,
         automaticallyImplyLeading: false,
@@ -431,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '500 rounds • Epic journey • Earn stars',
+                          'Multiple rounds • Epic journey • Earn stars',
                           style: TextStyle(
                             fontSize: 14,
                             color: Colors.white.withOpacity(0.9),
@@ -533,72 +547,54 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final lastDay = DateTime(lastChallenge.year, lastChallenge.month, lastChallenge.day);
     final isCompleted = today == lastDay;
 
-    // If completed, show countdown card instead
+    // If completed, show compact notification banner
     if (isCompleted) {
       return AnimatedBuilder(
         animation: _animationController,
         builder: (context, child) {
           return Transform.scale(
-            scale: 1.0 + (_animationController.value * 0.02),
+            scale: 1.0 + (_animationController.value * 0.01),
             child: Container(
-              height: 160,
+              height: 70,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Colors.purple.shade800,
-                    Colors.purple.shade600,
+                    Colors.purple.shade800.withOpacity(0.6),
+                    Colors.purple.shade700.withOpacity(0.6),
                   ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
                 ),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: Colors.purple.shade400,
-                  width: 2,
+                  color: Colors.purple.shade400.withOpacity(0.4),
+                  width: 1.5,
                 ),
               ),
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
                 children: [
-                  const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text('✅', style: TextStyle(fontSize: 32)),
-                      SizedBox(width: 12),
-                      Text(
-                        'Challenge Complete!',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                  const Text('✅', style: TextStyle(fontSize: 24)),
+                  const SizedBox(width: 12),
+                  Expanded(
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         const Text(
-                          'Next challenge in:',
+                          'Daily Challenge Complete!',
                           style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _countdown,
-                          style: const TextStyle(
-                            fontSize: 32,
+                            fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Next in: $_countdown',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.7),
+                            fontSize: 12,
                             fontFamily: 'monospace',
                           ),
                         ),

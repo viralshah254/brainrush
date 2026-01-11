@@ -15,10 +15,12 @@ class EducationSettingsScreen extends StatefulWidget {
 
 class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
   int? _selectedAge;
+  String? _selectedEducationLevel; // 'HIGH_SCHOOL' or 'UNIVERSITY'
   String? _selectedSchoolSystem;
   String? _selectedGradeLevel;
   String? _selectedChallengeGradeLevel;
   String? _selectedExamFocus;
+  String? _selectedDegree; // For university students
   
   // Get available grades based on selected school system
   List<GradeLevel> get _availableGrades {
@@ -28,16 +30,22 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
     return GradeLevel.getGradesForSystem(_selectedSchoolSystem!);
   }
   
-  // Check if user is beyond high school age (19+ years = 2+ years after typical graduation at 17)
-  bool get _isBeyondHighSchoolAge {
+  // Check if user is 18 or older (should choose high school vs university)
+  bool get _shouldShowEducationLevelSelection {
     if (_selectedAge == null) return false;
-    return _selectedAge! >= 19;
+    return _selectedAge! >= 18;
   }
   
-  // Check if user should only see exam prep options
-  bool get _shouldShowOnlyExamPrep {
+  // Check if in university
+  bool get _isUniversityStudent {
+    return _selectedEducationLevel == 'UNIVERSITY';
+  }
+  
+  // Check if should show grade selection (high school students)
+  bool get _shouldShowGradeSelection {
     if (_selectedAge == null) return false;
-    return _selectedAge! >= 19; // 2+ years beyond typical high school graduation
+    if (_selectedAge! < 18) return true; // Under 18, always show grades
+    return _selectedEducationLevel == 'HIGH_SCHOOL'; // 18+, only if high school selected
   }
 
   @override
@@ -107,8 +115,15 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
                     onChanged: (value) {
                       setState(() {
                         _selectedAge = value;
-                        // Auto-suggest grade based on age and school system
+                        
+                        // Auto-handle education level for different ages
                         if (value != null) {
+                          if (value < 18) {
+                            // Under 18, clear education level (not needed)
+                            _selectedEducationLevel = null;
+                          }
+                          
+                          // Auto-suggest grade based on age and school system
                           final systemCode = _selectedSchoolSystem ?? 'GENERAL';
                           final suggestedGrade = GradeLevel.fromAge(value, systemCode);
                           if (suggestedGrade != null) {
@@ -125,64 +140,110 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
             
             const SizedBox(height: 16),
             
-            // School System
-            _buildCard(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'School System',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    value: _selectedSchoolSystem,
-                    decoration: _inputDecoration(),
-                    dropdownColor: AppTheme.darkCard,
-                    style: const TextStyle(color: Colors.white),
-                    items: SchoolSystem.values.map((system) {
-                      return DropdownMenuItem(
-                        value: system.code,
-                        child: Text(system.displayName),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedSchoolSystem = value;
-                        
-                        // Reset grade selections and auto-suggest based on age
-                        if (value != null && _selectedAge != null) {
-                          final suggestedGrade = GradeLevel.fromAge(_selectedAge!, value);
-                          if (suggestedGrade != null) {
-                            _selectedGradeLevel = suggestedGrade.code;
-                            _selectedChallengeGradeLevel = suggestedGrade.code;
-                          } else {
-                            // Default to first grade of the new system
+            // Education Level Selection (for users 18+)
+            if (_shouldShowEducationLevelSelection) ...[
+              _buildCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Education Level',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedEducationLevel,
+                      decoration: _inputDecoration(),
+                      dropdownColor: AppTheme.darkCard,
+                      style: const TextStyle(color: Colors.white),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'HIGH_SCHOOL',
+                          child: Text('High School'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'UNIVERSITY',
+                          child: Text('University'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedEducationLevel = value;
+                          // Reset selections when switching
+                          if (value == 'UNIVERSITY') {
+                            _selectedGradeLevel = null;
+                            _selectedChallengeGradeLevel = null;
+                            _selectedDegree = null;
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            
+            // School System (only for high school students)
+            if (_shouldShowGradeSelection) ...[
+              _buildCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'School System',
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedSchoolSystem,
+                      decoration: _inputDecoration(),
+                      dropdownColor: AppTheme.darkCard,
+                      style: const TextStyle(color: Colors.white),
+                      items: SchoolSystem.values.map((system) {
+                        return DropdownMenuItem(
+                          value: system.code,
+                          child: Text(system.displayName),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedSchoolSystem = value;
+                          
+                          // Reset grade selections and auto-suggest based on age
+                          if (value != null && _selectedAge != null) {
+                            final suggestedGrade = GradeLevel.fromAge(_selectedAge!, value);
+                            if (suggestedGrade != null) {
+                              _selectedGradeLevel = suggestedGrade.code;
+                              _selectedChallengeGradeLevel = suggestedGrade.code;
+                            } else {
+                              // Default to first grade of the new system
+                              final grades = GradeLevel.getGradesForSystem(value);
+                              if (grades.isNotEmpty) {
+                                _selectedGradeLevel = grades.first.code;
+                                _selectedChallengeGradeLevel = grades.first.code;
+                              }
+                            }
+                          } else if (value != null) {
+                            // No age set, just use first grade
                             final grades = GradeLevel.getGradesForSystem(value);
                             if (grades.isNotEmpty) {
                               _selectedGradeLevel = grades.first.code;
                               _selectedChallengeGradeLevel = grades.first.code;
                             }
                           }
-                        } else if (value != null) {
-                          // No age set, just use first grade
-                          final grades = GradeLevel.getGradesForSystem(value);
-                          if (grades.isNotEmpty) {
-                            _selectedGradeLevel = grades.first.code;
-                            _selectedChallengeGradeLevel = grades.first.code;
-                          }
-                        }
-                      });
-                    },
-                  ),
-                ],
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ],
             
             const SizedBox(height: 24),
             
-            // Grade Level (hidden if beyond high school age)
-            if (!_shouldShowOnlyExamPrep) ...[
+            // Grade Level (for high school students)
+            if (_shouldShowGradeSelection) ...[
               _buildSectionTitle('Academic Level'),
               _buildCard(
               child: Column(
@@ -268,6 +329,95 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
               ),
             ),
             ], // Close the spread operator for grade-level fields
+            
+            // University Degree Selection (for university students)
+            if (_isUniversityStudent) ...[
+              _buildSectionTitle('Academic Level'),
+              _buildCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Degree Program',
+                            style: TextStyle(color: Colors.white70, fontSize: 14),
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryNeon.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(color: AppTheme.primaryNeon),
+                          ),
+                          child: const Text(
+                            'Coming Soon',
+                            style: TextStyle(
+                              color: AppTheme.primaryNeon,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedDegree,
+                      decoration: _inputDecoration(),
+                      dropdownColor: AppTheme.darkCard,
+                      style: const TextStyle(color: Colors.white60),
+                      items: const [
+                        DropdownMenuItem(
+                          value: 'ENGINEERING',
+                          child: Text('Engineering'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'BUSINESS',
+                          child: Text('Business Administration'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'COMPUTER_SCIENCE',
+                          child: Text('Computer Science'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'MEDICINE',
+                          child: Text('Medicine'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'LAW',
+                          child: Text('Law'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'ARTS',
+                          child: Text('Arts & Humanities'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'SCIENCES',
+                          child: Text('Natural Sciences'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'OTHER',
+                          child: Text('Other'),
+                        ),
+                      ],
+                      onChanged: null, // Disabled - coming soon
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'University-specific content is being developed. Use Exam Preparation below for now.',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.5),
+                        fontSize: 12,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             
             const SizedBox(height: 24),
             
@@ -536,7 +686,7 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
   Future<void> _saveSettings(BuildContext context) async {
     final userProvider = context.read<UserProvider>();
     
-    // Validate required fields - grade not required for post-high-school age
+    // Validate required fields
     if (_selectedAge == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -547,8 +697,19 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
       return;
     }
     
-    // Require grade selection only for high school age and below
-    if (!_shouldShowOnlyExamPrep && _selectedGradeLevel == null) {
+    // For users 18+, require education level selection
+    if (_shouldShowEducationLevelSelection && _selectedEducationLevel == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select your education level (High School or University)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    
+    // Require grade selection only for high school students
+    if (_shouldShowGradeSelection && _selectedGradeLevel == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please select your grade level'),

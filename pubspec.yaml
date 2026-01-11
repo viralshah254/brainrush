@@ -37,3 +37,6 @@ flutter:
   
   assets:
     - assets/questions/questions.json
+    - assets/images/mindrush_logo.png
+    - assets/images/appstore.png
+    - assets/images/playstore.png
