@@ -194,7 +194,7 @@ class _SplashScreenState extends State<SplashScreen>
                               return AppTheme.primaryGradient.createShader(bounds);
                             },
                             child: const Text(
-                              'BrainRush',
+                              'MindRush',
                               style: TextStyle(
                                 fontSize: 48,
                                 fontWeight: FontWeight.bold,
@@ -205,7 +205,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'Keep that brain fresh! 🚀',
+                            'Play smarter. Learn faster.',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.white60,
