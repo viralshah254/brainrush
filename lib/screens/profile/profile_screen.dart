@@ -343,7 +343,7 @@ class ProfileScreen extends StatelessWidget {
                         _buildSettingItem(
                           Icons.info,
                           'About',
-                          'MindRush v1.0.0 — Play smarter. Learn faster.',
+                          'MindRush v1.0.0 — The Thinking Game.',
                           () {},
                         ),
                       ],

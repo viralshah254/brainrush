@@ -11,7 +11,7 @@
 - **New**: **MindRush**
 
 ### Tagline
-- **"Play smarter. Learn faster."**
+- **"The Thinking Game."**
 
 ### Package/Bundle Identifier
 - **Previous**: `com.example.brainrush` / `com.games.brainrush`
