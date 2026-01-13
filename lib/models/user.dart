@@ -53,6 +53,13 @@ class User {
   final bool isGuest;
   final DateTime lastDailyChallenge;
   
+  // Retention fields
+  final int consecutiveLoginDays;
+  final DateTime lastLoginDate;
+  final DateTime? lastFreeCoinsClaimDate;
+  final bool hasClaimedDailyLoginReward;
+  final DateTime? lastLuckySpinDate;
+  
   // Education Mode fields
   final int? age;
   final String? country;
@@ -75,6 +82,12 @@ class User {
     this.stats = const UserStats(),
     this.isGuest = true,
     DateTime? lastDailyChallenge,
+    // Retention fields
+    this.consecutiveLoginDays = 1,
+    DateTime? lastLoginDate,
+    this.lastFreeCoinsClaimDate,
+    this.hasClaimedDailyLoginReward = false,
+    this.lastLuckySpinDate,
     // Education fields
     this.age,
     this.country = 'Kenya',
@@ -87,7 +100,8 @@ class User {
     this.hasSatSubscription = false,
     this.hasGmatSubscription = false,
     this.hasAllAccessSubscription = false,
-  }) : lastDailyChallenge = lastDailyChallenge ?? const Duration(days: -1) as DateTime;
+  }) : lastDailyChallenge = lastDailyChallenge ?? const Duration(days: -1) as DateTime,
+       lastLoginDate = lastLoginDate ?? const Duration(days: 0) as DateTime;
 
   User copyWith({
     String? id,
@@ -97,6 +111,11 @@ class User {
     UserStats? stats,
     bool? isGuest,
     DateTime? lastDailyChallenge,
+    int? consecutiveLoginDays,
+    DateTime? lastLoginDate,
+    DateTime? lastFreeCoinsClaimDate,
+    bool? hasClaimedDailyLoginReward,
+    DateTime? lastLuckySpinDate,
     int? age,
     String? country,
     String? schoolSystem,
@@ -116,6 +135,11 @@ class User {
       stats: stats ?? this.stats,
       isGuest: isGuest ?? this.isGuest,
       lastDailyChallenge: lastDailyChallenge ?? this.lastDailyChallenge,
+      consecutiveLoginDays: consecutiveLoginDays ?? this.consecutiveLoginDays,
+      lastLoginDate: lastLoginDate ?? this.lastLoginDate,
+      lastFreeCoinsClaimDate: lastFreeCoinsClaimDate ?? this.lastFreeCoinsClaimDate,
+      hasClaimedDailyLoginReward: hasClaimedDailyLoginReward ?? this.hasClaimedDailyLoginReward,
+      lastLuckySpinDate: lastLuckySpinDate ?? this.lastLuckySpinDate,
       age: age ?? this.age,
       country: country ?? this.country,
       schoolSystem: schoolSystem ?? this.schoolSystem,
@@ -138,6 +162,11 @@ class User {
       'stats': stats.toJson(),
       'isGuest': isGuest,
       'lastDailyChallenge': lastDailyChallenge.toIso8601String(),
+      'consecutiveLoginDays': consecutiveLoginDays,
+      'lastLoginDate': lastLoginDate.toIso8601String(),
+      'lastFreeCoinsClaimDate': lastFreeCoinsClaimDate?.toIso8601String(),
+      'hasClaimedDailyLoginReward': hasClaimedDailyLoginReward,
+      'lastLuckySpinDate': lastLuckySpinDate?.toIso8601String(),
       'age': age,
       'country': country,
       'schoolSystem': schoolSystem,
@@ -164,6 +193,17 @@ class User {
       lastDailyChallenge: json['lastDailyChallenge'] != null
           ? DateTime.parse(json['lastDailyChallenge'] as String)
           : DateTime.now().subtract(const Duration(days: 1)),
+      consecutiveLoginDays: json['consecutiveLoginDays'] as int? ?? 1,
+      lastLoginDate: json['lastLoginDate'] != null
+          ? DateTime.parse(json['lastLoginDate'] as String)
+          : DateTime.now(),
+      lastFreeCoinsClaimDate: json['lastFreeCoinsClaimDate'] != null
+          ? DateTime.parse(json['lastFreeCoinsClaimDate'] as String)
+          : null,
+      hasClaimedDailyLoginReward: json['hasClaimedDailyLoginReward'] as bool? ?? false,
+      lastLuckySpinDate: json['lastLuckySpinDate'] != null
+          ? DateTime.parse(json['lastLuckySpinDate'] as String)
+          : null,
       age: json['age'] as int?,
       country: json['country'] as String? ?? 'Kenya',
       schoolSystem: json['schoolSystem'] as String?,
@@ -183,7 +223,32 @@ class User {
       username: 'Guest',
       isGuest: true,
       lastDailyChallenge: DateTime.now().subtract(const Duration(days: 1)),
+      lastLoginDate: DateTime.now(),
+      consecutiveLoginDays: 1,
     );
+  }
+  
+  // Check if user can claim free coins (every 4 hours)
+  bool get canClaimFreeCoins {
+    if (lastFreeCoinsClaimDate == null) return true;
+    final hoursSinceLastClaim = DateTime.now().difference(lastFreeCoinsClaimDate!).inHours;
+    return hoursSinceLastClaim >= 4;
+  }
+  
+  // Get time until next free coins
+  Duration get timeUntilNextFreeCoins {
+    if (lastFreeCoinsClaimDate == null) return Duration.zero;
+    final nextClaimTime = lastFreeCoinsClaimDate!.add(const Duration(hours: 4));
+    final diff = nextClaimTime.difference(DateTime.now());
+    return diff.isNegative ? Duration.zero : diff;
+  }
+  
+  // Check if user can spin the lucky wheel (once per day)
+  bool get canSpinLuckyWheel {
+    if (lastLuckySpinDate == null) return true;
+    final lastSpin = DateTime(lastLuckySpinDate!.year, lastLuckySpinDate!.month, lastLuckySpinDate!.day);
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return today.isAfter(lastSpin);
   }
 }
 

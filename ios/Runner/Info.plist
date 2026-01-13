@@ -45,6 +45,15 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
+	<!-- Firebase Cloud Messaging -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	
 	<!-- Google Mobile Ads App ID -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-4248679794653671~9985405800</string>

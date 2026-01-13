@@ -4,7 +4,14 @@ import 'package:confetti/confetti.dart';
 import 'dart:math';
 import '../../theme/app_theme.dart';
 import '../../models/campaign_round.dart';
+import '../../models/daily_quest.dart';
 import '../../services/campaign_service.dart';
+import '../../services/ad_service.dart';
+import '../../services/premium_service.dart';
+import '../../services/retention_service.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/ad_loading_dialog.dart';
+import '../../widgets/out_of_coins_dialog.dart';
 import 'campaign_screen.dart';
 import 'campaign_game_screen.dart';
 
@@ -37,6 +44,7 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
   
   int _displayedStars = 0;
   int _earnedStars = 0;
+  bool _coinsDoubled = false;
 
   @override
   void initState() {
@@ -69,6 +77,19 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
 
     // Animate stars one by one
     _animateStars();
+    
+    // Update quest progress
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final retentionService = context.read<RetentionService>();
+      retentionService.updateQuestProgress(QuestType.completeCampaign);
+      retentionService.updateQuestProgress(QuestType.playGames);
+      if (widget.correctAnswers > 0) {
+        retentionService.updateQuestProgress(
+          QuestType.correctAnswers,
+          increment: widget.correctAnswers,
+        );
+      }
+    });
   }
 
   void _animateStars() async {
@@ -107,8 +128,25 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
   @override
   Widget build(BuildContext context) {
     final campaignService = context.watch<CampaignService>();
+    final userProvider = context.watch<UserProvider>();
     final nextRound = campaignService.getRound(widget.round.roundNumber + 1);
     final accuracy = (widget.correctAnswers / widget.totalQuestions * 100).toStringAsFixed(1);
+
+    // Check if user ran out of coins AFTER game ended
+    // Only show popup if they're at 0 coins (lost more than they earned)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (userProvider.isOutOfCoins && !userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.triggerOutOfCoinsDialog();
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && userProvider.shouldShowOutOfCoinsDialog) {
+            userProvider.resetOutOfCoinsFlag();
+            showOutOfCoinsDialog(context);
+          }
+        });
+      } else if (userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.resetOutOfCoinsFlag();
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
@@ -247,7 +285,12 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
                         ),
                       ],
                     ),
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
+                    
+                    // Double Coins Offer (if not already doubled)
+                    if (!_coinsDoubled) _buildDoubleCoinsCard(context),
+                    
+                    const SizedBox(height: 30),
                     
                     // Next Round Preview
                     if (nextRound != null && !nextRound.isLocked) ...[
@@ -449,6 +492,156 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
         ],
       ),
     );
+  }
+
+  Widget _buildDoubleCoinsCard(BuildContext context) {
+    final premiumService = context.watch<PremiumService>();
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.amber.shade700, Colors.amber.shade500],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.amber.shade300, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.amber.withOpacity(0.4),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('💰', style: TextStyle(fontSize: 32)),
+              const SizedBox(width: 8),
+              const Icon(Icons.close, color: Colors.white, size: 24),
+              const SizedBox(width: 8),
+              const Text('2️⃣', style: TextStyle(fontSize: 32)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Double Your Coins!',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            premiumService.isPremium
+                ? 'Get ${widget.coinsEarned * 2} coins instantly!'
+                : 'Watch an ad to get ${widget.coinsEarned * 2} coins!',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.9),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: () => _handleDoubleCoins(context),
+              icon: Icon(
+                premiumService.isPremium ? Icons.star : Icons.play_circle_filled,
+                color: Colors.amber.shade700,
+              ),
+              label: Text(
+                premiumService.isPremium ? 'Claim 2X Coins' : 'Watch Ad for 2X',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.amber.shade700,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 5,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleDoubleCoins(BuildContext context) async {
+    final premiumService = context.read<PremiumService>();
+    final userProvider = context.read<UserProvider>();
+    
+    if (premiumService.isPremium) {
+      // Premium users get instant double coins
+      userProvider.addCoins(widget.coinsEarned);
+      setState(() {
+        _coinsDoubled = true;
+      });
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('✨ +${widget.coinsEarned} bonus coins! Total: ${widget.coinsEarned * 2}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      return;
+    }
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AdLoadingDialog(
+        message: 'Loading ad...',
+      ),
+    );
+
+    // Try to show ad
+    final watched = await adService.showRoundCompleteAd();
+    
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Close loading dialog
+    
+    if (watched) {
+      // Award double coins
+      userProvider.addCoins(widget.coinsEarned);
+      setState(() {
+        _coinsDoubled = true;
+      });
+      
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🎉 Coins doubled! +${widget.coinsEarned} bonus coins!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      // Show confetti
+      _confettiController.play();
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to load ad. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }
 

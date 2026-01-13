@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1053858925589",
+    "project_id": "mind-rush-15036",
+    "storage_bucket": "mind-rush-15036.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1053858925589:android:0a1538af37ec4aad83521c",
+        "android_client_info": {
+          "package_name": "com.dvtechventures.mindrush"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZB8INRh6AWv9HG1xpuHzzoBWBS4yXwYA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

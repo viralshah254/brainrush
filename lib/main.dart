@@ -10,6 +10,7 @@ import 'services/ad_service.dart';
 import 'services/campaign_service.dart';
 import 'services/question_service.dart';
 import 'services/education_subscription_service.dart';
+import 'services/retention_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -84,6 +85,9 @@ class MindRushApp extends StatelessWidget {
         ),
         ChangeNotifierProvider(
           create: (_) => CampaignService()..initialize(),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => RetentionService(),
         ),
       ],
       child: MaterialApp(

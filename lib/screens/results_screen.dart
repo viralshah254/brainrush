@@ -5,6 +5,12 @@ import 'dart:math' as math;
 import '../theme/app_theme.dart';
 import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
+import '../services/retention_service.dart';
+import '../services/ad_service.dart';
+import '../services/premium_service.dart';
+import '../models/daily_quest.dart';
+import '../widgets/out_of_coins_dialog.dart';
+import '../widgets/ad_loading_dialog.dart';
 import '../models/daily_reward.dart';
 
 class ResultsScreen extends StatefulWidget {
@@ -34,6 +40,8 @@ class _ResultsScreenState extends State<ResultsScreen>
   late ConfettiController _confettiController;
   late Animation<double> _scaleAnimation;
   late List<Animation<Offset>> _cardAnimations;
+  bool _pointsDoubled = false;
+  bool _coinsAlreadyAwarded = false;
 
   @override
   void initState() {
@@ -97,11 +105,15 @@ class _ResultsScreenState extends State<ResultsScreen>
   }
 
   void _updateUserData() {
+    if (_coinsAlreadyAwarded) return; // Prevent double awarding
+    
     final userProvider = context.read<UserProvider>();
+    final retentionService = context.read<RetentionService>();
     final coinsEarned = _calculateCoinsEarned();
 
     // Add coins
     userProvider.addCoins(coinsEarned);
+    _coinsAlreadyAwarded = true;
 
     // Update streak if daily challenge
     if (widget.mode == GameMode.daily && widget.correctAnswers > 0) {
@@ -124,6 +136,27 @@ class _ResultsScreenState extends State<ResultsScreen>
           // TODO: Implement buffs system
           break;
       }
+      
+      // Update daily challenge quest
+      retentionService.updateQuestProgress(QuestType.playDaily);
+    }
+    
+    // Update quest progress for all game modes
+    retentionService.updateQuestProgress(QuestType.playGames);
+    
+    // Update correct answers quest
+    if (widget.correctAnswers > 0) {
+      retentionService.updateQuestProgress(
+        QuestType.correctAnswers,
+        increment: widget.correctAnswers,
+      );
+    }
+    
+    // Update mode-specific quests
+    if (widget.mode == GameMode.league) {
+      retentionService.updateQuestProgress(QuestType.playLeague);
+    } else if (widget.mode == GameMode.multiplayer) {
+      retentionService.updateQuestProgress(QuestType.playWithFriends);
     }
   }
 
@@ -134,7 +167,78 @@ class _ResultsScreenState extends State<ResultsScreen>
     } else if (widget.mode == GameMode.league) {
       baseCoins = (baseCoins * 1.5).round(); // 1.5x for league
     }
+    
+    // Apply double points multiplier if ad was watched
+    if (_pointsDoubled) {
+      baseCoins *= 2;
+    }
+    
     return baseCoins;
+  }
+  
+  Future<void> _doublePointsByWatchingAd() async {
+    if (_pointsDoubled) return; // Already doubled
+    
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get double points without ad
+      setState(() {
+        _pointsDoubled = true;
+      });
+      
+      // Award extra coins
+      final userProvider = context.read<UserProvider>();
+      final extraCoins = _calculateCoinsEarned() ~/ 2; // Half of doubled amount = original amount
+      userProvider.addCoins(extraCoins);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✨ Premium bonus: Points doubled!'),
+          backgroundColor: Colors.amber,
+        ),
+      );
+      return;
+    }
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AdLoadingDialog(message: 'Loading ad...'),
+    );
+    
+    // Show ad
+    final watched = await adService.showRoundCompleteAd();
+    
+    if (!mounted) return;
+    Navigator.of(context).pop(); // Close loading dialog
+    
+    if (watched) {
+      setState(() {
+        _pointsDoubled = true;
+      });
+      
+      // Award extra coins
+      final userProvider = context.read<UserProvider>();
+      final extraCoins = _calculateCoinsEarned() ~/ 2; // Half of doubled amount = original amount
+      userProvider.addCoins(extraCoins);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('🎉 Points doubled! Extra coins added!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Unable to load ad. Try again!'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -147,10 +251,27 @@ class _ResultsScreenState extends State<ResultsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
     final accuracy = (widget.correctAnswers / widget.totalQuestions * 100).toStringAsFixed(1);
     final isPerfect = widget.correctAnswers == widget.totalQuestions;
     final coinsEarned = _calculateCoinsEarned();
     final performanceRating = _getPerformanceRating(double.parse(accuracy));
+
+    // Check if user ran out of coins AFTER game ended
+    // Only show popup if they're at 0 coins
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (userProvider.isOutOfCoins && !userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.triggerOutOfCoinsDialog();
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && userProvider.shouldShowOutOfCoinsDialog) {
+            userProvider.resetOutOfCoinsFlag();
+            showOutOfCoinsDialog(context);
+          }
+        });
+      } else if (userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.resetOutOfCoinsFlag();
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
@@ -258,6 +379,7 @@ class _ResultsScreenState extends State<ResultsScreen>
                             '+$coinsEarned',
                             Icons.monetization_on,
                             Colors.amber,
+                            isDoubled: _pointsDoubled,
                           ),
                         ),
                       ],
@@ -412,6 +534,46 @@ class _ResultsScreenState extends State<ResultsScreen>
                     position: _cardAnimations[5],
                     child: Column(
                       children: [
+                        // Double Points Button (only show if not already doubled)
+                        if (!_pointsDoubled)
+                          Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            width: double.infinity,
+                            height: 54,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Colors.amber.shade700, Colors.amber.shade400],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withOpacity(0.3),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: ElevatedButton.icon(
+                              onPressed: _doublePointsByWatchingAd,
+                              icon: const Text('📺', style: TextStyle(fontSize: 20)),
+                              label: const Text(
+                                '2X Points - Watch Ad',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                foregroundColor: AppTheme.darkBg,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        
                         SizedBox(
                           width: double.infinity,
                           height: 54,
@@ -636,35 +798,59 @@ class _ResultsScreenState extends State<ResultsScreen>
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
+  Widget _buildStatCard(String label, String value, IconData icon, Color color, {bool isDoubled = false}) {
+    return Stack(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.darkCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.white60,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (isDoubled)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.amber,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Text(
+                '2X',
+                style: TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10,
+                ),
+              ),
             ),
           ),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.white60,
-            ),
-          ),
-        ],
-      ),
+      ],
     );
   }
 }

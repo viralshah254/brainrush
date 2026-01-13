@@ -4,17 +4,20 @@ import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
 import '../theme/app_theme.dart';
 import '../services/room_service.dart';
+import '../services/league_service.dart';
 import '../services/ad_service.dart';
 import '../services/premium_service.dart';
 import '../widgets/ad_loading_dialog.dart';
 import 'results_screen.dart';
 import 'multiplayer/multiplayer_results_screen.dart';
+import 'leagues/league_results_screen.dart';
 
 class GameScreen extends StatefulWidget {
   final String category;
   final int questionCount;
   final GameMode mode;
   final String? roomCode;
+  final String? leagueId; // For league mode
 
   const GameScreen({
     super.key,
@@ -22,6 +25,7 @@ class GameScreen extends StatefulWidget {
     this.questionCount = 5,
     this.mode = GameMode.practice,
     this.roomCode,
+    this.leagueId,
   });
 
   @override
@@ -189,6 +193,35 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               MaterialPageRoute(
                 builder: (_) => MultiplayerResultsScreen(
                   room: updatedRoom,
+                  myScore: gameProvider.score,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      }
+
+      // If league, update league score and show league results
+      if (widget.mode == GameMode.league && widget.leagueId != null) {
+        final leagueService = LeagueService();
+        final user = context.read<UserProvider>().user;
+        if (user != null) {
+          // Update player score in league
+          await leagueService.updatePlayerScore(
+            widget.leagueId!,
+            user.id,
+            gameProvider.score,
+          );
+          
+          // Get updated league data
+          final league = await leagueService.getLeagueById(widget.leagueId!);
+          if (league != null && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LeagueResultsScreen(
+                  league: league,
                   myScore: gameProvider.score,
                 ),
               ),

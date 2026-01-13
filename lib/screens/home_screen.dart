@@ -4,12 +4,17 @@ import '../providers/user_provider.dart';
 import '../providers/mode_provider.dart';
 import '../theme/app_theme.dart';
 import '../models/app_mode.dart';
+import '../models/daily_login_reward.dart';
 import '../services/education_subscription_service.dart';
+import '../services/retention_service.dart';
+import '../widgets/retention_features_cards.dart';
+import '../widgets/daily_login_reward_dialog.dart';
 import 'game_screen.dart';
 import 'leagues/leagues_screen.dart';
 import 'friends/play_with_friends_screen.dart';
 import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
+import 'coin_store_screen.dart';
 import '../providers/game_provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,6 +39,60 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _updateCountdown();
     // Update countdown every second
     Future.delayed(const Duration(seconds: 1), _updateCountdown);
+    
+    // Check for daily login reward and comeback bonus
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDailyLoginReward();
+    });
+  }
+  
+  void _checkDailyLoginReward() {
+    final userProvider = context.read<UserProvider>();
+    final retentionService = context.read<RetentionService>();
+    final user = userProvider.user;
+    
+    if (user == null) return;
+    
+    // Check if user should receive login reward
+    final daysAway = userProvider.checkDailyLogin();
+    
+    if (!user.hasClaimedDailyLoginReward && daysAway >= 0) {
+      // Show comeback bonus if applicable
+      if (daysAway >= 2) {
+        final comebackBonus = retentionService.getComebackBonus(daysAway);
+        if (comebackBonus > 0) {
+          Future.delayed(const Duration(milliseconds: 300), () {
+            if (!mounted) return;
+            userProvider.addCoins(comebackBonus);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('🎉 Welcome back! +$comebackBonus comeback bonus!'),
+                backgroundColor: Colors.amber,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          });
+        }
+      }
+      
+      // Show daily login reward
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
+        final reward = DailyLoginReward.getRewardForDay(user.consecutiveLoginDays);
+        showDailyLoginRewardDialog(
+          context,
+          loginDay: user.consecutiveLoginDays,
+          coinsEarned: reward.coins,
+          onClaimed: () {
+            userProvider.addCoins(reward.coins);
+            userProvider.claimDailyLoginReward();
+          },
+        );
+      });
+    }
+    
+    // Refresh quests for new day
+    retentionService.checkQuestRefresh();
   }
 
   @override
@@ -83,6 +142,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         backgroundColor: AppTheme.darkBg,
         elevation: 0,
         automaticallyImplyLeading: false,
+        actions: [
+          // Coin Store Button
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Text('💰', style: TextStyle(fontSize: 18)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const CoinStoreScreen(),
+                ),
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -96,6 +176,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const SizedBox(height: 20),
                   _buildModeToggle(context),
                   const SizedBox(height: 24),
+                  
+                  // Retention features (daily quests, lucky spin, free coins)
+                  const RetentionFeaturesCards(),
                   
                   // Content changes based on mode
                   if (modeProvider.isEducationMode)

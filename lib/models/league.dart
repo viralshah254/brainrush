@@ -59,6 +59,11 @@ class League {
     this.totalQuestions = 10,
   });
 
+  /// Calculate the total prize pool based on entry fees
+  int get prizePot {
+    return participants.length * entryFee;
+  }
+
   int get daysRemaining {
     final now = DateTime.now();
     if (now.isAfter(endDate)) return 0;

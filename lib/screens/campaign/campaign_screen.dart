@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/campaign_service.dart';
 import '../../models/campaign_round.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/out_of_coins_dialog.dart';
 import 'campaign_game_screen.dart';
 
 class CampaignScreen extends StatefulWidget {
@@ -464,6 +466,18 @@ class _CampaignScreenState extends State<CampaignScreen>
   }
 
   void _startRound(CampaignRound round) {
+    final userProvider = context.read<UserProvider>();
+    final entryCost = round.difficulty.entryCost;
+    
+    // Check if user has enough coins
+    if (!userProvider.hasEnoughCoins(entryCost)) {
+      _showInsufficientCoinsDialog(entryCost);
+      return;
+    }
+    
+    // Deduct entry cost
+    userProvider.spendCoins(entryCost);
+    
     HapticFeedback.lightImpact();
     Navigator.push(
       context,
@@ -484,6 +498,11 @@ class _CampaignScreenState extends State<CampaignScreen>
         transitionDuration: const Duration(milliseconds: 500),
       ),
     );
+  }
+
+  void _showInsufficientCoinsDialog(int required) {
+    // Show the unified out of coins dialog
+    showOutOfCoinsDialog(context);
   }
 }
 

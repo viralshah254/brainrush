@@ -57,6 +57,19 @@ enum RoundDifficulty {
         return 300;
     }
   }
+
+  int get entryCost {
+    switch (this) {
+      case RoundDifficulty.easy:
+        return 10;
+      case RoundDifficulty.medium:
+        return 20;
+      case RoundDifficulty.hard:
+        return 30;
+      case RoundDifficulty.superHard:
+        return 50;
+    }
+  }
 }
 
 class CampaignRound {

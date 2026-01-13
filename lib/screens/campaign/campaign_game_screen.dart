@@ -131,6 +131,9 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
       // Add this wrong option to tried set
       _triedWrongOptions.add(index);
       
+      // Deduct coins for wrong answer (5 coins)
+      context.read<UserProvider>().deductCoins(5);
+      
       if (!premiumService.isPremium) {
         // Show try again dialog (no double points here)
         final shouldTryAgain = await _showWrongAnswerDialog();

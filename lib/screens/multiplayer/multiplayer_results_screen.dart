@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'dart:math' as math;
 import '../../theme/app_theme.dart';
 import '../../models/room.dart';
+import '../../providers/user_provider.dart';
+import '../../widgets/out_of_coins_dialog.dart';
 
 class MultiplayerResultsScreen extends StatefulWidget {
   final Room room;
@@ -57,6 +60,14 @@ class _MultiplayerResultsScreenState extends State<MultiplayerResultsScreen>
       ),
     );
 
+    // Award coins to winners
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final prize = _myPrize;
+      if (prize > 0) {
+        context.read<UserProvider>().addCoins(prize);
+      }
+    });
+
     // Start animations after a delay
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
@@ -80,11 +91,56 @@ class _MultiplayerResultsScreenState extends State<MultiplayerResultsScreen>
     return players;
   }
 
+  // Calculate prize pot and distribute coins
+  Map<String, int> get _prizeDistribution {
+    final prizePot = widget.room.players.length * 50; // 50 coins per player
+    final rankedPlayers = _rankedPlayers;
+    final distribution = <String, int>{};
+    
+    if (rankedPlayers.isEmpty) return distribution;
+    
+    // Only top 3 get prizes
+    if (rankedPlayers.length >= 1) {
+      distribution[rankedPlayers[0].userId] = (prizePot * 0.5).round(); // 50%
+    }
+    if (rankedPlayers.length >= 2) {
+      distribution[rankedPlayers[1].userId] = (prizePot * 0.3).round(); // 30%
+    }
+    if (rankedPlayers.length >= 3) {
+      distribution[rankedPlayers[2].userId] = (prizePot * 0.2).round(); // 20%
+    }
+    
+    return distribution;
+  }
+
+  int get _myPrize {
+    final user = context.read<UserProvider>().user;
+    if (user == null) return 0;
+    return _prizeDistribution[user.id] ?? 0;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final userProvider = context.watch<UserProvider>();
     final rankedPlayers = _rankedPlayers;
     final myRank =
         rankedPlayers.indexWhere((p) => p.score == widget.myScore) + 1;
+
+    // Check if user ran out of coins AFTER game ended
+    // Only show popup if they're at 0 coins (didn't win enough to recover entry fee)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (userProvider.isOutOfCoins && !userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.triggerOutOfCoinsDialog();
+        Future.delayed(const Duration(milliseconds: 800), () {
+          if (mounted && userProvider.shouldShowOutOfCoinsDialog) {
+            userProvider.resetOutOfCoinsFlag();
+            showOutOfCoinsDialog(context);
+          }
+        });
+      } else if (userProvider.shouldShowOutOfCoinsDialog) {
+        userProvider.resetOutOfCoinsFlag();
+      }
+    });
 
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
@@ -167,7 +223,57 @@ class _MultiplayerResultsScreenState extends State<MultiplayerResultsScreen>
                       ],
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 20),
+
+                  // Prize Pool Display
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.amber.shade700, Colors.amber.shade500],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.amber.shade300, width: 2),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Text('💰', style: TextStyle(fontSize: 24)),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Prize Pool: ${widget.room.players.length * 50} coins',
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_myPrize > 0) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'You won: +$_myPrize coins! 🎉',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
 
                   // Leaderboard
                   Expanded(
@@ -319,6 +425,18 @@ class _MultiplayerResultsScreenState extends State<MultiplayerResultsScreen>
                                                   color: Colors.white60,
                                                 ),
                                               ),
+                                              // Show prize for top 3
+                                              if (rank <= 3 && _prizeDistribution.containsKey(player.userId)) ...[
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  '💰 +${_prizeDistribution[player.userId]} coins',
+                                                  style: const TextStyle(
+                                                    fontSize: 12,
+                                                    color: Colors.amber,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
                                             ],
                                           ),
                                         ),
