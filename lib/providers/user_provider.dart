@@ -1,14 +1,18 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
+import '../services/smart_notification_service.dart';
 
 class UserProvider extends ChangeNotifier {
   User? _user;
   bool _showOutOfCoinsDialog = false;
+  DateTime _lastPlayTime = DateTime.now();
+  final SmartNotificationService _notificationService = SmartNotificationService();
 
   User? get user => _user;
   bool get isGuest => _user?.isGuest ?? true;
   bool get shouldShowOutOfCoinsDialog => _showOutOfCoinsDialog;
   bool get isOutOfCoins => (_user?.coins ?? 0) == 0;
+  DateTime get lastPlayTime => _lastPlayTime;
   
   void resetOutOfCoinsFlag() {
     _showOutOfCoinsDialog = false;
@@ -150,5 +154,72 @@ class UserProvider extends ChangeNotifier {
     _user = _user!.copyWith(lastFreeCoinsClaimDate: DateTime.now());
     notifyListeners();
   }
-}
+  
+  // ===== SMART NOTIFICATIONS =====
+  
+  /// Schedule smart notifications on app launch
+  Future<void> initializeSmartNotifications() async {
+    if (_user == null) return;
+    
+    try {
+      final prefs = await _notificationService.loadPreferences();
+      final hasPlayedToday = _hasPlayedToday();
+      final daysSinceLastPlay = DateTime.now().difference(_lastPlayTime).inDays;
 
+      // Check for lapsed users (2-7 days)
+      if (daysSinceLastPlay >= 2 && daysSinceLastPlay < 7) {
+        await _notificationService.sendComebackNotification();
+        debugPrint('🎁 Comeback notification sent ($daysSinceLastPlay days inactive)');
+      }
+
+      // Schedule smart notifications
+      await _notificationService.scheduleSmartNotifications(
+        prefs: prefs,
+        currentStreak: _user!.streakCount,
+        lastPlayedDate: _lastPlayTime,
+        hasPlayedToday: hasPlayedToday,
+      );
+      
+      debugPrint('✅ Smart notifications initialized');
+    } catch (e) {
+      debugPrint('❌ Error initializing smart notifications: $e');
+    }
+  }
+  
+  /// Record that user played (call after every game)
+  Future<void> recordGamePlayed() async {
+    _lastPlayTime = DateTime.now();
+    notifyListeners();
+    
+    // Reschedule smart notifications based on updated behavior
+    await _scheduleSmartNotifications();
+  }
+  
+  /// Schedule smart notifications based on current user state
+  Future<void> _scheduleSmartNotifications() async {
+    if (_user == null) return;
+    
+    try {
+      final prefs = await _notificationService.loadPreferences();
+      final hasPlayedToday = _hasPlayedToday();
+      
+      await _notificationService.scheduleSmartNotifications(
+        prefs: prefs,
+        currentStreak: _user!.streakCount,
+        lastPlayedDate: _lastPlayTime,
+        hasPlayedToday: hasPlayedToday,
+      );
+    } catch (e) {
+      debugPrint('❌ Error scheduling smart notifications: $e');
+    }
+  }
+  
+  /// Check if user played today
+  bool _hasPlayedToday() {
+    final now = DateTime.now();
+    final lastPlay = _lastPlayTime;
+    return now.year == lastPlay.year &&
+           now.month == lastPlay.month &&
+           now.day == lastPlay.day;
+  }
+}

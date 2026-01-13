@@ -15,6 +15,7 @@ import 'friends/play_with_friends_screen.dart';
 import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
 import 'coin_store_screen.dart';
+import 'notification_settings_screen.dart';
 import '../providers/game_provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -43,7 +44,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     // Check for daily login reward and comeback bonus
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkDailyLoginReward();
+      _initializeSmartNotifications();
     });
+  }
+  
+  /// Initialize smart notifications on app launch
+  Future<void> _initializeSmartNotifications() async {
+    final userProvider = context.read<UserProvider>();
+    await userProvider.initializeSmartNotifications();
   }
   
   void _checkDailyLoginReward() {
@@ -143,6 +151,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         elevation: 0,
         automaticallyImplyLeading: false,
         actions: [
+          // Notification Settings Button
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+                shape: BoxShape.circle,
+              ),
+              child: const Text('🔔', style: TextStyle(fontSize: 18)),
+            ),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const NotificationSettingsScreen(),
+                ),
+              );
+            },
+          ),
           // Coin Store Button
           IconButton(
             icon: Container(

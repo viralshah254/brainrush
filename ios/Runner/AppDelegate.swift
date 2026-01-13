@@ -10,8 +10,7 @@ import FirebaseMessaging
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Initialize Firebase
-    FirebaseApp.configure()
+    // Firebase is initialized in main.dart - DO NOT initialize here
     
     // Set up FCM
     if #available(iOS 10.0, *) {

@@ -158,6 +158,9 @@ class _ResultsScreenState extends State<ResultsScreen>
     } else if (widget.mode == GameMode.multiplayer) {
       retentionService.updateQuestProgress(QuestType.playWithFriends);
     }
+    
+    // Record game played for smart notifications
+    userProvider.recordGamePlayed();
   }
 
   int _calculateCoinsEarned() {

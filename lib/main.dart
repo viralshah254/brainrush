@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'providers/user_provider.dart';
 import 'providers/game_provider.dart';
 import 'providers/mode_provider.dart';
@@ -11,6 +13,8 @@ import 'services/campaign_service.dart';
 import 'services/question_service.dart';
 import 'services/education_subscription_service.dart';
 import 'services/retention_service.dart';
+import 'services/fcm_service.dart';
+import 'services/local_notification_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -22,6 +26,38 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // ignore: avoid_print
+    print('✅ Firebase initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Firebase initialization error: $e');
+  }
+
+  // Initialize Firebase Cloud Messaging
+  try {
+    await FCMService().initialize();
+    // ignore: avoid_print
+    print('✅ FCM initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ FCM not available (iOS Simulator) - $e');
+  }
+
+  // Initialize Local Notifications
+  try {
+    await LocalNotificationService().initialize();
+    // ignore: avoid_print
+    print('✅ Local notifications initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Local notifications error: $e');
+  }
 
   // Initialize Mobile Ads (with error handling)
   // Note: Ads won't work on iOS Simulator - use real device for testing

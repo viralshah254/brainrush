@@ -245,84 +245,83 @@ class _DailyLoginRewardDialogState extends State<DailyLoginRewardDialog>
                             ),
                           ),
                           const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: allRewards.map((r) {
-                              final isPast = r.day < widget.loginDay;
-                              final isCurrent = r.day == widget.loginDay;
-                              final isDaySpecial = r.isSpecial;
-                              return Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 3),
-                                child: Column(
-                                  children: [
-                                    Container(
-                                      width: isDaySpecial ? 38 : 34,
-                                      height: isDaySpecial ? 38 : 34,
-                                      decoration: BoxDecoration(
-                                        gradient: isPast || isCurrent
-                                            ? (isDaySpecial
-                                                ? LinearGradient(
-                                                    colors: [Colors.amber.shade700, Colors.amber.shade400],
-                                                  )
-                                                : LinearGradient(
-                                                    colors: [AppTheme.primaryNeon, AppTheme.secondaryNeon],
-                                                  ))
-                                            : null,
-                                        color: isPast || isCurrent
-                                            ? null
-                                            : Colors.grey.shade800,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(
-                                          color: isCurrent
-                                              ? Colors.white
-                                              : (isDaySpecial && !isPast && !isCurrent
-                                                  ? Colors.amber.withOpacity(0.3)
-                                                  : Colors.transparent),
-                                          width: isCurrent ? 3 : 1,
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: allRewards.map((r) {
+                                final isPast = r.day < widget.loginDay;
+                                final isCurrent = r.day == widget.loginDay;
+                                final isDaySpecial = r.isSpecial;
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                                  child: Column(
+                                    children: [
+                                      Container(
+                                        width: isDaySpecial ? 38 : 34,
+                                        height: isDaySpecial ? 38 : 34,
+                                        decoration: BoxDecoration(
+                                          gradient: isPast || isCurrent
+                                              ? (isDaySpecial
+                                                  ? LinearGradient(
+                                                      colors: [Colors.amber.shade700, Colors.amber.shade400],
+                                                    )
+                                                  : LinearGradient(
+                                                      colors: [AppTheme.primaryNeon, AppTheme.secondaryNeon],
+                                                    ))
+                                              : null,
+                                          color: isPast || isCurrent ? null : Colors.grey.shade800,
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isCurrent
+                                                ? Colors.white
+                                                : (isDaySpecial && !isPast && !isCurrent
+                                                    ? Colors.amber.withOpacity(0.3)
+                                                    : Colors.transparent),
+                                            width: isCurrent ? 3 : 1,
+                                          ),
+                                          boxShadow: isCurrent
+                                              ? [
+                                                  BoxShadow(
+                                                    color: (isDaySpecial ? Colors.amber : AppTheme.primaryNeon)
+                                                        .withOpacity(0.5),
+                                                    blurRadius: 12,
+                                                    spreadRadius: 2,
+                                                  ),
+                                                ]
+                                              : null,
                                         ),
-                                        boxShadow: isCurrent
-                                            ? [
-                                                BoxShadow(
-                                                  color: (isDaySpecial ? Colors.amber : AppTheme.primaryNeon)
-                                                      .withOpacity(0.5),
-                                                  blurRadius: 12,
-                                                  spreadRadius: 2,
+                                        child: Center(
+                                          child: isPast || isCurrent
+                                              ? Icon(
+                                                  isDaySpecial ? Icons.star : Icons.check,
+                                                  color: Colors.white,
+                                                  size: isDaySpecial ? 22 : 18,
+                                                )
+                                              : Text(
+                                                  r.day.toString(),
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Colors.grey.shade600,
+                                                  ),
                                                 ),
-                                              ]
-                                            : null,
+                                        ),
                                       ),
-                                      child: Center(
-                                        child: isPast || isCurrent
-                                            ? Icon(
-                                                isDaySpecial ? Icons.star : Icons.check,
-                                                color: Colors.white,
-                                                size: isDaySpecial ? 22 : 18,
-                                              )
-                                            : Text(
-                                                r.day.toString(),
-                                                style: TextStyle(
-                                                  fontSize: 13,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Colors.grey.shade600,
-                                                ),
-                                              ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        r.day.toString(),
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: isCurrent ? Colors.white : Colors.white54,
+                                          fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      r.day.toString(),
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: isCurrent
-                                            ? Colors.white
-                                            : Colors.white54,
-                                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }).toList(),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                           ),
                         ],
                       ),
