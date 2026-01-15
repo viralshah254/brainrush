@@ -228,19 +228,24 @@ class User {
     );
   }
   
-  // Check if user can claim free coins (every 4 hours)
+  // Check if user can claim free coins (once per day)
   bool get canClaimFreeCoins {
     if (lastFreeCoinsClaimDate == null) return true;
-    final hoursSinceLastClaim = DateTime.now().difference(lastFreeCoinsClaimDate!).inHours;
-    return hoursSinceLastClaim >= 4;
+    final lastClaim = DateTime(lastFreeCoinsClaimDate!.year, lastFreeCoinsClaimDate!.month, lastFreeCoinsClaimDate!.day);
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return today.isAfter(lastClaim);
   }
   
-  // Get time until next free coins
+  // Get time until next free coins (not used anymore since it's daily)
   Duration get timeUntilNextFreeCoins {
     if (lastFreeCoinsClaimDate == null) return Duration.zero;
-    final nextClaimTime = lastFreeCoinsClaimDate!.add(const Duration(hours: 4));
-    final diff = nextClaimTime.difference(DateTime.now());
-    return diff.isNegative ? Duration.zero : diff;
+    final lastClaim = DateTime(lastFreeCoinsClaimDate!.year, lastFreeCoinsClaimDate!.month, lastFreeCoinsClaimDate!.day);
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    if (today.isAfter(lastClaim)) return Duration.zero;
+    
+    // Calculate time until midnight (next day)
+    final tomorrow = today.add(const Duration(days: 1));
+    return tomorrow.difference(DateTime.now());
   }
   
   // Check if user can spin the lucky wheel (once per day)

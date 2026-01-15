@@ -109,8 +109,12 @@ class RetentionService extends ChangeNotifier {
   }
 
   // Update quest progress
-  Future<void> updateQuestProgress(QuestType type, {int increment = 1}) async {
+  /// Update quest progress and return bonus amount if all quests completed
+  /// Returns the bonus amount (200) if all quests just completed, 0 otherwise
+  Future<int> updateQuestProgress(QuestType type, {int increment = 1}) async {
     bool updated = false;
+    bool wasAllCompleted = allQuestsCompleted;
+    int bonusAmount = 0;
     
     for (int i = 0; i < _dailyQuests.length; i++) {
       final quest = _dailyQuests[i];
@@ -134,8 +138,21 @@ class RetentionService extends ChangeNotifier {
     
     if (updated) {
       await _saveQuestsState();
+      
+      // Check if all quests are now completed and auto-award bonus
+      if (!wasAllCompleted && allQuestsCompleted && !_allQuestsBonusClaimed) {
+        // Auto-award the bonus (200 coins)
+        _allQuestsBonusClaimed = true;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('all_quests_bonus_claimed', true);
+        await _saveQuestsState();
+        bonusAmount = 200; // Return bonus amount for automatic awarding
+      }
+      
       notifyListeners();
     }
+    
+    return bonusAmount;
   }
 
   // Claim quest reward
@@ -155,7 +172,8 @@ class RetentionService extends ChangeNotifier {
   }
 
   /// Claims the bonus reward for completing all daily quests
-  /// Returns the bonus coin amount (500) if successful, 0 otherwise
+  /// Returns the bonus coin amount (200) if successful, 0 otherwise
+  /// This is now called automatically when all quests are completed
   Future<int> claimAllQuestsBonus() async {
     if (allQuestsCompleted && !_allQuestsBonusClaimed) {
       _allQuestsBonusClaimed = true;
@@ -163,7 +181,16 @@ class RetentionService extends ChangeNotifier {
       await prefs.setBool('all_quests_bonus_claimed', true);
       await _saveQuestsState();
       notifyListeners();
-      return 500; // Bonus coins for completing all quests
+      return 200; // Bonus coins for completing all quests (changed from 500)
+    }
+    return 0;
+  }
+  
+  /// Automatically awards bonus when all quests are completed
+  /// Called when quest progress is updated
+  Future<int> checkAndAwardAllQuestsBonus() async {
+    if (allQuestsCompleted && !_allQuestsBonusClaimed) {
+      return await claimAllQuestsBonus();
     }
     return 0;
   }

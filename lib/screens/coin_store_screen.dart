@@ -169,6 +169,14 @@ class CoinStoreScreen extends StatelessWidget {
   }
 
   Widget _buildAdRewardCard(BuildContext context, UserProvider userProvider) {
+    final user = userProvider.user;
+    final canWatchAd = user?.canClaimFreeCoins ?? true; // Use same logic as free coins (daily)
+    
+    // Hide card if already used today
+    if (!canWatchAd) {
+      return const SizedBox.shrink();
+    }
+    
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -458,6 +466,8 @@ class CoinStoreScreen extends StatelessWidget {
     if (watched) {
       // Award coins
       userProvider.addCoins(50);
+      // Mark as claimed for today (same as free coins)
+      userProvider.claimFreeCoins();
       
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

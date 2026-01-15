@@ -224,3 +224,4 @@ Or if it fails:
 
 **🎉 Your app now has automatic version checking!**
 
+

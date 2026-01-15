@@ -101,6 +101,7 @@ class _LuckySpinScreenState extends State<LuckySpinScreen>
 
     // Update last spin date
     userProvider.setUser(user.copyWith(lastLuckySpinDate: DateTime.now()));
+    userProvider.saveUserData(); // Persist the date
   }
 
   void _showWinDialog() {

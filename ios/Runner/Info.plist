@@ -45,6 +45,10 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
+	<!-- Contacts Permission -->
+	<key>NSContactsUsageDescription</key>
+	<string>We need access to your contacts to find friends who also play MindRush!</string>
+	
 	<!-- Firebase Cloud Messaging -->
 	<key>FirebaseAppDelegateProxyEnabled</key>
 	<false/>

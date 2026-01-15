@@ -128,7 +128,7 @@ class _ResultsScreenState extends State<ResultsScreen>
     });
   }
 
-  void _updateUserData() {
+  Future<void> _updateUserData() async {
     if (_coinsAlreadyAwarded) return; // Prevent double awarding
     
     final userProvider = context.read<UserProvider>();
@@ -162,15 +162,28 @@ class _ResultsScreenState extends State<ResultsScreen>
       }
       
       // Update daily challenge quest
-      retentionService.updateQuestProgress(QuestType.playDaily);
+      final bonus1 = await retentionService.updateQuestProgress(QuestType.playDaily);
+      if (bonus1 > 0) {
+        userProvider.addCoins(bonus1);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('🎉 All quests complete! +$bonus1 bonus coins!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
     
     // Update quest progress for all game modes
-    retentionService.updateQuestProgress(QuestType.playGames);
+    final bonus2 = await retentionService.updateQuestProgress(QuestType.playGames);
     
+    int bonus = 0;
     // Update correct answers quest
     if (widget.correctAnswers > 0) {
-      retentionService.updateQuestProgress(
+      bonus = await retentionService.updateQuestProgress(
         QuestType.correctAnswers,
         increment: widget.correctAnswers,
       );
@@ -178,9 +191,24 @@ class _ResultsScreenState extends State<ResultsScreen>
     
     // Update mode-specific quests
     if (widget.mode == GameMode.league) {
-      retentionService.updateQuestProgress(QuestType.playLeague);
+      final bonus3 = await retentionService.updateQuestProgress(QuestType.playLeague);
+      if (bonus3 > bonus) bonus = bonus3;
     } else if (widget.mode == GameMode.multiplayer) {
-      retentionService.updateQuestProgress(QuestType.playWithFriends);
+      final bonus3 = await retentionService.updateQuestProgress(QuestType.playWithFriends);
+      if (bonus3 > bonus) bonus = bonus3;
+    }
+    
+    // Award the highest bonus (should be the same if all quests completed)
+    final totalBonus = bonus2 > bonus ? bonus2 : bonus;
+    if (totalBonus > 0 && mounted) {
+      userProvider.addCoins(totalBonus);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🎉 All quests complete! +$totalBonus bonus coins!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 3),
+        ),
+      );
     }
     
     // Record game played for smart notifications

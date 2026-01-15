@@ -10,7 +10,6 @@ import '../services/retention_service.dart';
 import '../widgets/retention_features_cards.dart';
 import '../widgets/daily_login_reward_dialog.dart';
 import 'game_screen.dart';
-import 'friends/play_with_friends_screen.dart';
 import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
 import 'coin_store_screen.dart';
@@ -948,20 +947,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         onTap: () => _showCategoryDialog(context),
       ),
       const SizedBox(height: 12),
-      _buildModeCard(
+      _buildLockedModeCard(
         context,
         title: 'Play With Friends',
         subtitle: '2-5 players • Just for fun',
         emoji: '👥',
         color: Colors.green,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const PlayWithFriendsScreen(),
-            ),
-          );
-        },
       ),
       const SizedBox(height: 12),
       _buildLockedModeCard(
@@ -1338,13 +1329,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             onTap: () {
               Navigator.pop(dialogContext);
               if (isFriendsMode) {
-                // Navigate to Play With Friends screen with subject pre-selected
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const PlayWithFriendsScreen(),
-                  ),
-                );
+                // Show locked feature dialog
+                _showLockedFeatureDialog(context, 'Play With Friends');
               } else {
                 Navigator.push(
                   context,

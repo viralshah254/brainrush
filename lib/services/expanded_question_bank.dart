@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/question.dart';
+import 'question_service.dart';
 
 /// Expanded question bank with 5000+ questions across 10 subjects and 4 difficulty levels
 /// This supports 500 campaign rounds with 10 questions each (5000 question instances with rotation)
@@ -41,7 +42,7 @@ class ExpandedQuestionBank {
   }
   
   /// Get questions for a specific campaign round
-  static Future<List<Question>> getQuestionsForRound(int roundNumber) async {
+  static Future<List<Question>> getQuestionsForRound(int roundNumber, {String? category}) async {
     // Ensure initialized
     await initialize();
     
@@ -58,14 +59,24 @@ class ExpandedQuestionBank {
       'Nature',
     ];
     
-    final subject = subjects[(roundNumber - 1) % subjects.length];
+    // Use provided category if available, otherwise calculate from round number
+    final subject = category ?? subjects[(roundNumber - 1) % subjects.length];
     final difficulty = _getDifficultyForRound(roundNumber);
     
     // Map campaign difficulty to question bank difficulty
     // Campaign uses "super_hard" but questions use "very_hard"
     final mappedDifficulty = _mapCampaignDifficultyToQuestionDifficulty(difficulty);
     
-    return getQuestionsBySubjectAndDifficulty(subject, mappedDifficulty, count: 10);
+    debugPrint('🎯 Campaign Round $roundNumber: Looking for questions with subject="$subject", difficulty="$mappedDifficulty"');
+    
+    final questions = await getQuestionsBySubjectAndDifficulty(subject, mappedDifficulty, count: 10);
+    
+    debugPrint('✅ Found ${questions.length} questions for Round $roundNumber (subject: $subject, difficulty: $mappedDifficulty)');
+    if (questions.isNotEmpty) {
+      debugPrint('📝 Sample question category: ${questions.first.category}');
+    }
+    
+    return questions;
   }
   
   /// Map campaign difficulty string to question bank difficulty
@@ -190,26 +201,33 @@ class ExpandedQuestionBank {
   
   /// Get questions filtered by subject and difficulty
   /// Handles both "very_hard" and "super_hard" (maps super_hard to very_hard)
-  static List<Question> getQuestionsBySubjectAndDifficulty(
+  /// Excludes already answered questions
+  static Future<List<Question>> getQuestionsBySubjectAndDifficulty(
     String subject,
     String difficulty, {
     int count = 10,
-  }) {
+  }) async {
     // Ensure initialized (will use hardcoded if not initialized)
     if (!_isInitialized) {
       _cachedQuestions = _getHardcodedQuestions();
       _isInitialized = true;
     }
     
+    // Get answered questions for this category
+    final questionService = QuestionService(); // Singleton factory
+    await questionService.initialize();
+    final answeredIds = questionService.getAnsweredQuestionIds(subject);
+    
     final allQuestions = _getAllQuestions();
     
     // Normalize difficulty: map super_hard to very_hard
     final normalizedDifficulty = difficulty == 'super_hard' ? 'very_hard' : difficulty;
     
-    // Filter by subject and difficulty (check both very_hard and super_hard for compatibility)
+    // Filter by subject and difficulty, excluding answered questions
     var filteredQuestions = allQuestions
         .where((q) => 
             q.category == subject && 
+            !answeredIds.contains(q.id) &&
             (q.difficulty == normalizedDifficulty || 
              (normalizedDifficulty == 'very_hard' && q.difficulty == 'super_hard') ||
              (normalizedDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
@@ -221,6 +239,7 @@ class ExpandedQuestionBank {
       final moreQuestions = allQuestions
           .where((q) => 
               q.category == subject && 
+              !answeredIds.contains(q.id) &&
               (q.difficulty == adjacentDifficulty ||
                (adjacentDifficulty == 'very_hard' && q.difficulty == 'super_hard') ||
                (adjacentDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
@@ -228,12 +247,26 @@ class ExpandedQuestionBank {
       filteredQuestions.addAll(moreQuestions);
     }
     
-    // If still not enough, get any questions from this subject
+    // If still not enough, get any unanswered questions from this subject
     if (filteredQuestions.length < count) {
       final anyQuestions = allQuestions
-          .where((q) => q.category == subject)
+          .where((q) => q.category == subject && !answeredIds.contains(q.id))
           .toList();
       filteredQuestions.addAll(anyQuestions);
+    }
+    
+    // If still not enough after filtering answered questions, reset for this category
+    if (filteredQuestions.length < count) {
+      debugPrint('⚠️ Not enough unanswered questions for $subject. Resetting answered questions for this category.');
+      await questionService.resetProgress(subject);
+      // Retry without answered filter
+      filteredQuestions = allQuestions
+          .where((q) => 
+              q.category == subject && 
+              (q.difficulty == normalizedDifficulty || 
+               (normalizedDifficulty == 'very_hard' && q.difficulty == 'super_hard') ||
+               (normalizedDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
+          .toList();
     }
     
     filteredQuestions.shuffle(_random);

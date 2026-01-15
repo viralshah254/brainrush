@@ -75,12 +75,28 @@ class UserProvider extends ChangeNotifier {
       final educationExamFocus = prefs.getString('education_exam_focus') ?? 'NONE';
       final educationModeEnabled = prefs.getBool('education_mode_enabled') ?? false;
       
+      // Load last free coins claim date
+      final lastFreeCoinsStr = prefs.getString('last_free_coins_claim_date');
+      DateTime? lastFreeCoinsClaimDate;
+      if (lastFreeCoinsStr != null) {
+        lastFreeCoinsClaimDate = DateTime.parse(lastFreeCoinsStr);
+      }
+      
+      // Load last lucky spin date
+      final lastLuckySpinStr = prefs.getString('last_lucky_spin_date');
+      DateTime? lastLuckySpinDate;
+      if (lastLuckySpinStr != null) {
+        lastLuckySpinDate = DateTime.parse(lastLuckySpinStr);
+      }
+      
       // Update user with loaded data
       _user = _user!.copyWith(
         coins: coins,
         consecutiveLoginDays: consecutiveDays,
         hasClaimedDailyLoginReward: hasClaimedToday,
         lastLoginDate: lastLoginDate,
+        lastFreeCoinsClaimDate: lastFreeCoinsClaimDate,
+        lastLuckySpinDate: lastLuckySpinDate,
         age: educationAge,
         schoolSystem: educationSchoolSystem,
         gradeLevel: educationGradeLevel,
@@ -134,6 +150,16 @@ class UserProvider extends ChangeNotifier {
       }
       await prefs.setString('education_exam_focus', _user!.examFocus ?? 'NONE');
       await prefs.setBool('education_mode_enabled', _user!.educationModeEnabled);
+      
+      // Save last free coins claim date
+      if (_user!.lastFreeCoinsClaimDate != null) {
+        await prefs.setString('last_free_coins_claim_date', _user!.lastFreeCoinsClaimDate!.toIso8601String());
+      }
+      
+      // Save last lucky spin date
+      if (_user!.lastLuckySpinDate != null) {
+        await prefs.setString('last_lucky_spin_date', _user!.lastLuckySpinDate!.toIso8601String());
+      }
       
       debugPrint('💾 User data saved: Coins=${_user!.coins}, EducationEnabled=${_user!.educationModeEnabled}');
     } catch (e) {
@@ -303,6 +329,7 @@ class UserProvider extends ChangeNotifier {
   void claimFreeCoins() {
     if (_user == null) return;
     _user = _user!.copyWith(lastFreeCoinsClaimDate: DateTime.now());
+    saveUserData(); // Persist the date
     notifyListeners();
   }
   

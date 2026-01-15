@@ -202,6 +202,18 @@ class EducationCampaignService extends ChangeNotifier {
       _rounds[index + 1] = _rounds[index + 1].copyWith(isLocked: false);
     }
     
+    // Unlock next set of 10 rounds when completing round 10, 20, 30, etc.
+    if (roundNumber % 10 == 0 && roundNumber < _rounds.length) {
+      final nextSetStart = roundNumber + 1;
+      final nextSetEnd = (roundNumber + 10).clamp(0, _rounds.length);
+      for (int i = nextSetStart; i <= nextSetEnd && i <= _rounds.length; i++) {
+        final roundIndex = i - 1;
+        if (roundIndex < _rounds.length) {
+          _rounds[roundIndex] = _rounds[roundIndex].copyWith(isLocked: false);
+        }
+      }
+    }
+    
     // Update current round
     if (roundNumber >= _currentRound) {
       _currentRound = roundNumber + 1;

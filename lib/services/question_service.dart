@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/services.dart';
-import '../models/question.dart';
-import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../models/question.dart';
 
 class QuestionService {
   static final QuestionService _instance = QuestionService._internal();
@@ -78,6 +77,11 @@ class QuestionService {
     }
     _userAnsweredQuestions[category]!.add(questionId);
     await _saveUserAnsweredQuestions();
+  }
+
+  /// Get answered question IDs for a category
+  Set<String> getAnsweredQuestionIds(String category) {
+    return _userAnsweredQuestions[category] ?? <String>{};
   }
 
   /// Get unanswered questions for a category

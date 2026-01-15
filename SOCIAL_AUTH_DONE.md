@@ -217,3 +217,4 @@ To activate social logins, get these from provider consoles:
 **Status**: ✅ Implementation Complete  
 **Pending**: Provider credential configuration
 
+

@@ -146,78 +146,37 @@ class DailyQuestsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Column(
+                child: Row(
                   children: [
-                    Row(
-                      children: [
-                        const Text(
-                          '🏆',
-                          style: TextStyle(fontSize: 40),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'All Quests Complete!',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.darkBg,
-                                ),
-                              ),
-                              Text(
-                                retentionService.allQuestsBonusClaimed
-                                    ? 'Amazing work! Come back tomorrow for new quests.'
-                                    : 'Claim your bonus reward!',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: AppTheme.darkBg.withOpacity(0.8),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                    const Text(
+                      '🏆',
+                      style: TextStyle(fontSize: 40),
                     ),
-                    if (!retentionService.allQuestsBonusClaimed) ...[
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            final bonus = await retentionService.claimAllQuestsBonus();
-                            if (bonus > 0) {
-                              userProvider.addCoins(bonus);
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('🎉 +$bonus bonus coins earned!'),
-                                    backgroundColor: Colors.green,
-                                  ),
-                                );
-                              }
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.darkBg,
-                            foregroundColor: Colors.amber,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: const Text(
-                            'Claim +500 Bonus Coins',
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'All Quests Complete!',
                             style: TextStyle(
-                              fontSize: 16,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
+                              color: AppTheme.darkBg,
                             ),
                           ),
-                        ),
+                          Text(
+                            retentionService.allQuestsBonusClaimed
+                                ? '✨ +200 bonus coins automatically awarded!'
+                                : '✨ +200 bonus coins will be awarded automatically!',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: AppTheme.darkBg.withOpacity(0.8),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ],
                 ),
               ),
