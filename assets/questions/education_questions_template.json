@@ -1,0 +1,17 @@
+[
+  {
+    "id": "edu_us_grade6_math_001",
+    "text": "What is 12 × 8?",
+    "options": ["96", "88", "104", "92"],
+    "correctIndex": 0,
+    "explanation": "12 × 8 = 96. You can think of it as 10 × 8 = 80, plus 2 × 8 = 16, which equals 96.",
+    "category": "Math",
+    "difficulty": "easy",
+    "topic": "multiplication",
+    "mode": "EDUCATION_SCHOOL",
+    "gradeLevel": "US_GRADE_6",
+    "source": "CURATED",
+    "language": "EN"
+  }
+]
+

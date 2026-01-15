@@ -11,22 +11,35 @@ class RetentionFeaturesCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = context.watch<UserProvider>().user;
+    final canSpin = user?.canSpinLuckyWheel ?? false;
+    final canClaimFreeCoins = user?.canClaimFreeCoins ?? false;
+    
+    // Only show cards that are available
+    final showLuckySpin = canSpin;
+    final showFreeCoins = canClaimFreeCoins;
+    final showBothCards = showLuckySpin || showFreeCoins;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // Daily Quests Card
         _buildDailyQuestsCard(context),
-        const SizedBox(height: 12),
         
-        // Row with Lucky Spin and Free Coins
-        Row(
-          children: [
-            Expanded(child: _buildLuckySpinCard(context)),
-            const SizedBox(width: 12),
-            Expanded(child: _buildFreeCoinsCard(context)),
-          ],
-        ),
-        const SizedBox(height: 24),
+        // Only show Lucky Spin and Free Coins row if at least one is available
+        if (showBothCards) ...[
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (showLuckySpin) ...[
+                Expanded(child: _buildLuckySpinCard(context)),
+                if (showFreeCoins) const SizedBox(width: 12),
+              ],
+              if (showFreeCoins)
+                Expanded(child: _buildFreeCoinsCard(context)),
+            ],
+          ),
+        ],
       ],
     );
   }
@@ -45,7 +58,7 @@ class RetentionFeaturesCards extends StatelessWidget {
         },
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
@@ -61,8 +74,8 @@ class RetentionFeaturesCards extends StatelessWidget {
           child: Row(
             children: [
               Container(
-                width: 50,
-                height: 50,
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [AppTheme.primaryNeon, AppTheme.secondaryNeon],
@@ -70,10 +83,10 @@ class RetentionFeaturesCards extends StatelessWidget {
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
-                  child: Text('🎯', style: TextStyle(fontSize: 24)),
+                  child: Text('🎯', style: TextStyle(fontSize: 22)),
                 ),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -81,16 +94,16 @@ class RetentionFeaturesCards extends StatelessWidget {
                     const Text(
                       'Daily Quests',
                       style: TextStyle(
-                        fontSize: 18,
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       '${retentionService.completedQuestsCount}/${retentionService.totalQuestsCount} completed',
                       style: TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         color: Colors.white.withOpacity(0.7),
                       ),
                     ),
@@ -134,7 +147,7 @@ class RetentionFeaturesCards extends StatelessWidget {
         },
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: canSpin
@@ -154,20 +167,20 @@ class RetentionFeaturesCards extends StatelessWidget {
               Text(
                 '🎰',
                 style: TextStyle(
-                  fontSize: 32,
+                  fontSize: 28,
                   color: canSpin ? Colors.white : Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Lucky Spin',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: canSpin ? Colors.white : Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               Text(
                 canSpin ? 'Available!' : 'Tomorrow',
                 style: TextStyle(
@@ -196,7 +209,7 @@ class RetentionFeaturesCards extends StatelessWidget {
             : null,
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: canClaim
@@ -216,20 +229,20 @@ class RetentionFeaturesCards extends StatelessWidget {
               Text(
                 '⏰',
                 style: TextStyle(
-                  fontSize: 32,
+                  fontSize: 28,
                   color: canClaim ? Colors.white : Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
                 'Free Coins',
                 style: TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                   color: canClaim ? Colors.white : Colors.grey.shade600,
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 2),
               if (canClaim)
                 const Text(
                   '+50 coins',

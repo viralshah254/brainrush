@@ -1,35 +1,105 @@
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/daily_quest.dart';
 
 class RetentionService extends ChangeNotifier {
   static final RetentionService _instance = RetentionService._internal();
   factory RetentionService() => _instance;
   RetentionService._internal() {
-    _initializeQuests();
+    _initializeQuests(); // Will be async but that's okay
   }
 
   List<DailyQuest> _dailyQuests = [];
   DateTime? _questsLastRefreshed;
+  bool _allQuestsBonusClaimed = false;
 
-  List<DailyQuest> get dailyQuests => _dailyQuests;
+  List<DailyQuest> get dailyQuests => _dailyQuests.where((q) => q.type != QuestType.playWithFriends).toList();
   
-  int get completedQuestsCount => _dailyQuests.where((q) => q.isCompleted).length;
-  int get totalQuestsCount => _dailyQuests.length;
+  int get completedQuestsCount => _dailyQuests.where((q) => q.isCompleted && q.type != QuestType.playWithFriends).length;
+  int get totalQuestsCount => _dailyQuests.where((q) => q.type != QuestType.playWithFriends).length;
   
   bool get allQuestsCompleted => completedQuestsCount == totalQuestsCount && totalQuestsCount > 0;
+  
+  /// Returns whether the all quests completion bonus has been claimed
+  bool get allQuestsBonusClaimed {
+    return _allQuestsBonusClaimed;
+  }
 
-  void _initializeQuests() {
+  Future<void> _initializeQuests() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     
+    // Load last refresh date from SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final lastRefreshStr = prefs.getString('daily_quests_last_refresh');
+    DateTime? lastRefresh;
+    
+    if (lastRefreshStr != null) {
+      lastRefresh = DateTime.parse(lastRefreshStr);
+    }
+    
     // Check if we need to refresh quests (new day)
-    if (_questsLastRefreshed == null || 
-        DateTime(_questsLastRefreshed!.year, _questsLastRefreshed!.month, _questsLastRefreshed!.day)
+    if (lastRefresh == null || 
+        DateTime(lastRefresh.year, lastRefresh.month, lastRefresh.day)
             .isBefore(today)) {
+      // New day - generate fresh quests
       _dailyQuests = DailyQuest.generateDailyQuests();
       _questsLastRefreshed = now;
-      notifyListeners();
+      _allQuestsBonusClaimed = false;
+      
+      // Save refresh date
+      await prefs.setString('daily_quests_last_refresh', now.toIso8601String());
+      await _saveQuestsState();
+    } else {
+      // Same day - load saved quest state
+      await _loadQuestsState();
+      _questsLastRefreshed = lastRefresh;
+    }
+    
+    notifyListeners();
+  }
+
+  Future<void> _saveQuestsState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final questsJson = _dailyQuests.map((q) => q.toJson()).toList();
+      await prefs.setString('daily_quests_state', questsJson.toString());
+      await prefs.setBool('all_quests_bonus_claimed', _allQuestsBonusClaimed);
+    } catch (e) {
+      debugPrint('❌ Error saving quests state: $e');
+    }
+  }
+
+  Future<void> _loadQuestsState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final questsStr = prefs.getString('daily_quests_state');
+      _allQuestsBonusClaimed = prefs.getBool('all_quests_bonus_claimed') ?? false;
+      
+      if (questsStr != null && questsStr.isNotEmpty) {
+        // Parse quests from saved state
+        // For simplicity, we'll regenerate and update progress
+        _dailyQuests = DailyQuest.generateDailyQuests();
+        
+        // Load individual quest progress
+        for (var quest in _dailyQuests) {
+          final currentValue = prefs.getInt('quest_${quest.id}_progress') ?? 0;
+          final isCompleted = prefs.getBool('quest_${quest.id}_completed') ?? false;
+          
+          final index = _dailyQuests.indexWhere((q) => q.id == quest.id);
+          if (index != -1) {
+            _dailyQuests[index] = quest.copyWith(
+              currentValue: currentValue,
+              isCompleted: isCompleted,
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading quests state: $e');
+      // Fallback to generating new quests
+      _dailyQuests = DailyQuest.generateDailyQuests();
     }
   }
 
@@ -39,7 +109,7 @@ class RetentionService extends ChangeNotifier {
   }
 
   // Update quest progress
-  void updateQuestProgress(QuestType type, {int increment = 1}) {
+  Future<void> updateQuestProgress(QuestType type, {int increment = 1}) async {
     bool updated = false;
     
     for (int i = 0; i < _dailyQuests.length; i++) {
@@ -52,23 +122,48 @@ class RetentionService extends ChangeNotifier {
           currentValue: newValue,
           isCompleted: isCompleted,
         );
+        
+        // Save individual quest progress
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setInt('quest_${quest.id}_progress', newValue);
+        await prefs.setBool('quest_${quest.id}_completed', isCompleted);
+        
         updated = true;
       }
     }
     
     if (updated) {
+      await _saveQuestsState();
       notifyListeners();
     }
   }
 
   // Claim quest reward
-  int claimQuestReward(String questId) {
+  Future<int> claimQuestReward(String questId) async {
     final questIndex = _dailyQuests.indexWhere((q) => q.id == questId);
     if (questIndex != -1) {
       final quest = _dailyQuests[questIndex];
       if (quest.isCompleted) {
+        // Mark as claimed
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('quest_${questId}_claimed', true);
+        await _saveQuestsState();
         return quest.coinReward;
       }
+    }
+    return 0;
+  }
+
+  /// Claims the bonus reward for completing all daily quests
+  /// Returns the bonus coin amount (500) if successful, 0 otherwise
+  Future<int> claimAllQuestsBonus() async {
+    if (allQuestsCompleted && !_allQuestsBonusClaimed) {
+      _allQuestsBonusClaimed = true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('all_quests_bonus_claimed', true);
+      await _saveQuestsState();
+      notifyListeners();
+      return 500; // Bonus coins for completing all quests
     }
     return 0;
   }

@@ -101,15 +101,6 @@ class DailyQuest {
         emoji: '🎮',
       ),
       DailyQuest(
-        id: 'correct_20',
-        type: QuestType.correctAnswers,
-        title: 'Answer Correctly',
-        description: 'Get 20 correct answers',
-        targetValue: 20,
-        coinReward: 150,
-        emoji: '✅',
-      ),
-      DailyQuest(
         id: 'daily_challenge',
         type: QuestType.playDaily,
         title: 'Daily Challenge',
@@ -117,24 +108,6 @@ class DailyQuest {
         targetValue: 1,
         coinReward: 200,
         emoji: '⚡',
-      ),
-      DailyQuest(
-        id: 'play_league',
-        type: QuestType.playLeague,
-        title: 'Join a League',
-        description: 'Play in any Global League',
-        targetValue: 1,
-        coinReward: 150,
-        emoji: '🏆',
-      ),
-      DailyQuest(
-        id: 'play_friends',
-        type: QuestType.playWithFriends,
-        title: 'Play with Friends',
-        description: 'Complete a game with friends',
-        targetValue: 1,
-        coinReward: 125,
-        emoji: '👥',
       ),
       DailyQuest(
         id: 'campaign_round',
@@ -145,11 +118,34 @@ class DailyQuest {
         coinReward: 175,
         emoji: '🎯',
       ),
+      DailyQuest(
+        id: 'correct_20',
+        type: QuestType.correctAnswers,
+        title: 'Answer Correctly',
+        description: 'Get 20 correct answers',
+        targetValue: 20,
+        coinReward: 150,
+        emoji: '✅',
+      ),
+      DailyQuest(
+        id: 'play_friends',
+        type: QuestType.playWithFriends,
+        title: 'Play with Friends',
+        description: 'Complete a game with friends',
+        targetValue: 1,
+        coinReward: 125,
+        emoji: '👥',
+      ),
     ];
 
-    // Return 3-4 random quests
-    allQuests.shuffle();
-    return allQuests.take(4).toList();
+    // Return 2 quests (excluding league and friends)
+    // Always include: Play 3 Games and Daily Challenge
+    final selectedQuests = [
+      allQuests.firstWhere((q) => q.id == 'play_3_games'),
+      allQuests.firstWhere((q) => q.id == 'daily_challenge'),
+    ];
+    
+    return selectedQuests;
   }
 }
 

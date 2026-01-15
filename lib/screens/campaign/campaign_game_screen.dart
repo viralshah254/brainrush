@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -7,17 +8,26 @@ import '../../services/ad_service.dart';
 import '../../services/premium_service.dart';
 import '../../services/question_service.dart';
 import '../../services/campaign_service.dart';
+import '../../services/expanded_question_bank.dart';
+import '../../services/education_question_bank.dart';
 import '../../theme/app_theme.dart';
 import '../../models/question.dart';
 import '../../models/campaign_round.dart';
-import '../../widgets/try_again_dialog.dart';
 import '../../widgets/ad_loading_dialog.dart';
 import 'campaign_results_screen.dart';
 
+/// Campaign Game Screen - Supports both normal and education campaigns
 class CampaignGameScreen extends StatefulWidget {
   final CampaignRound round;
+  final bool isEducationMode;
+  final String? gradeLevel;
 
-  const CampaignGameScreen({super.key, required this.round});
+  const CampaignGameScreen({
+    super.key,
+    required this.round,
+    this.isEducationMode = false,
+    this.gradeLevel,
+  });
 
   @override
   State<CampaignGameScreen> createState() => _CampaignGameScreenState();
@@ -36,6 +46,8 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
   bool _doublePointsActive = false;
   bool _doublePointsUsedThisRound = false; // Track if 2x used this round
   Set<int> _triedWrongOptions = {}; // Track wrong attempts for retry highlighting
+  bool _isLoading = true;
+  String? _loadingError;
 
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
@@ -83,21 +95,99 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
   }
 
   Future<void> _loadQuestions() async {
-    final questionService = context.read<QuestionService>();
-    final userProvider = context.read<UserProvider>();
+    try {
+      List<Question> questions;
+      
+      if (widget.isEducationMode && widget.gradeLevel != null) {
+        // Use Education Question Bank for education campaign
+        debugPrint('📚 Loading education questions for grade: ${widget.gradeLevel}, round: ${widget.round.roundNumber}');
+        questions = await EducationQuestionBank.getQuestionsForCampaignRound(
+          roundNumber: widget.round.roundNumber,
+          gradeLevel: widget.gradeLevel!,
+          schoolSystem: _getSchoolSystemFromGrade(widget.gradeLevel!),
+        );
+        debugPrint('✅ Loaded ${questions.length} education questions');
+        
+        if (questions.isEmpty) {
+          debugPrint('⚠️ No education questions found with filters! Checking question bank...');
+          // Try to get any questions for this grade level (any subject, any difficulty)
+          final totalCount = await EducationQuestionBank.getTotalQuestionCountForGrade(widget.gradeLevel!);
+          debugPrint('📊 Total questions for ${widget.gradeLevel}: $totalCount');
+          
+          if (totalCount > 0) {
+            // Try again without difficulty filter
+            debugPrint('🔄 Retrying with broader filters (any difficulty)...');
+            questions = await EducationQuestionBank.getQuestions(
+              gradeLevel: widget.gradeLevel!,
+              subject: widget.round.category,
+              difficulty: null, // Try without difficulty filter
+              count: 10,
+            );
+            debugPrint('✅ Retry loaded ${questions.length} questions');
+          }
+          
+          if (questions.isEmpty && totalCount > 0) {
+            // Try with any subject
+            debugPrint('🔄 Retrying with any subject...');
+            questions = await EducationQuestionBank.getQuestions(
+              gradeLevel: widget.gradeLevel!,
+              subject: 'Math', // Try Math as fallback
+              difficulty: null,
+              count: 10,
+            );
+            debugPrint('✅ Retry with Math loaded ${questions.length} questions');
+          }
+          
+          if (questions.isEmpty) {
+            throw Exception('No education questions available for grade level: ${widget.gradeLevel}. Total in bank: $totalCount');
+          }
+        }
+      } else {
+        // Use Expanded Question Bank for normal campaign
+        questions = await ExpandedQuestionBank.getQuestionsForRound(
+          widget.round.roundNumber,
+        );
+      }
 
-    await questionService.initialize();
-    final questions = questionService.getUnansweredQuestions(
-      widget.round.category,
-      limit: widget.round.questionCount,
-    );
+      if (questions.isEmpty) {
+        throw Exception('No questions loaded');
+      }
 
-    setState(() {
-      _questions = questions;
-    });
+      setState(() {
+        _questions = questions;
+        _isLoading = false;
+        _loadingError = null;
+      });
 
-    _questionTransitionController.forward();
-    _timerController.forward(from: 0.0);
+      _questionTransitionController.forward();
+      _timerController.forward(from: 0.0);
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error loading questions: $e');
+      debugPrint('Stack trace: $stackTrace');
+      
+      setState(() {
+        _isLoading = false;
+        _loadingError = e.toString();
+      });
+      
+      // Show error to user
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading questions: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+        
+        // Navigate back after a delay
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            Navigator.of(context).pop();
+          }
+        });
+      }
+    }
   }
 
   @override
@@ -105,6 +195,13 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     _timerController.dispose();
     _questionTransitionController.dispose();
     super.dispose();
+  }
+  
+  /// Extract school system code from grade level
+  String _getSchoolSystemFromGrade(String gradeLevel) {
+    if (gradeLevel.startsWith('US_')) return 'US';
+    if (gradeLevel.startsWith('UK_')) return 'UK';
+    return 'GENERAL';
   }
 
   Future<void> _handleAnswer(int index) async {
@@ -447,21 +544,60 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (_questions.isEmpty) {
+    if (_isLoading || _questions.isEmpty) {
       return Scaffold(
         backgroundColor: AppTheme.darkBg,
         body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(color: widget.round.difficulty.color),
-              const SizedBox(height: 20),
-              Text(
-                'Loading ${widget.round.title}...',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: Colors.white,
+              if (_loadingError != null) ...[
+                Icon(Icons.error_outline, color: Colors.red, size: 64),
+                const SizedBox(height: 20),
+                Text(
+                  'Error Loading Questions',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.red,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 10),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Text(
+                    _loadingError!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white70,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Go Back'),
+                ),
+              ] else ...[
+                CircularProgressIndicator(color: widget.round.difficulty.color),
+                const SizedBox(height: 20),
+                Text(
+                  widget.isEducationMode 
+                      ? 'Loading 🎓 Welcome to ${widget.round.category}...'
+                      : 'Loading ${widget.round.title}...',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: Colors.white,
+                  ),
+                ),
+                if (widget.isEducationMode && widget.gradeLevel != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Grade: ${widget.gradeLevel}',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
+              ],
             ],
           ),
         ),

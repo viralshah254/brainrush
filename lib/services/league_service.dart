@@ -118,7 +118,7 @@ class LeagueService {
   Future<League?> getLeagueById(String id) async {
     await Future.delayed(const Duration(milliseconds: 300));
     try {
-      return _leagues.firstWhere((l) => l.id == id);
+    return _leagues.firstWhere((l) => l.id == id);
     } catch (e) {
       return null;
     }

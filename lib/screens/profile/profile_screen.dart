@@ -3,7 +3,10 @@ import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/user_provider.dart';
 import '../../services/premium_service.dart';
+import '../../services/auth_service.dart';
 import '../premium_screen.dart';
+import '../auth/simple_auth_screen.dart';
+import '../notification_settings_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -20,367 +23,74 @@ class ProfileScreen extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
+            final authService = AuthService();
+            final isGuest = user.isGuest;
+            final isSignedIn = authService.isSignedIn;
+
             return SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(20),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // Header
                   const Text(
                     'Profile',
                     style: TextStyle(
-                      fontSize: 32,
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
-                  // Profile Header
-                  Center(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            gradient: AppTheme.primaryGradient,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primaryNeon.withOpacity(0.5),
-                                blurRadius: 30,
-                                spreadRadius: 5,
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Text(
-                              user.username[0].toUpperCase(),
-                              style: const TextStyle(
-                                fontSize: 56,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.darkBg,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          user.username,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: user.isGuest
-                                ? Colors.orange.withOpacity(0.2)
-                                : AppTheme.primaryNeon.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: user.isGuest
-                                  ? Colors.orange
-                                  : AppTheme.primaryNeon,
-                            ),
-                          ),
-                          child: Text(
-                            user.isGuest ? '👤 Guest User' : '✓ Verified',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: user.isGuest
-                                  ? Colors.orange
-                                  : AppTheme.primaryNeon,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 32),
+                  // Authentication Section (Top Priority)
+                  if (isGuest) ...[
+                    _buildAuthenticationCard(context),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Profile Avatar & Info
+                  _buildProfileHeader(context, user, authService),
+                  const SizedBox(height: 24),
 
                   // Stats Grid
-                  const Text(
-                    'Statistics',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          '💰',
-                          user.coins.toString(),
-                          'Coins',
-                          AppTheme.warningNeon,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          '🔥',
-                          user.streakCount.toString(),
-                          'Streak',
-                          Colors.orange,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          '🎯',
-                          '${(user.stats.accuracy * 100).toStringAsFixed(0)}%',
-                          'Accuracy',
-                          Colors.green,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          '⭐',
-                          user.stats.totalScore.toString(),
-                          'Total Score',
-                          AppTheme.primaryNeon,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildStatCard(
-                          '✅',
-                          user.stats.correctAnswers.toString(),
-                          'Correct',
-                          Colors.green,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _buildStatCard(
-                          '❓',
-                          user.stats.questionsAnswered.toString(),
-                          'Questions',
-                          AppTheme.accentNeon,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 32),
+                  _buildStatsGrid(user),
+                  const SizedBox(height: 24),
 
-                  // Achievements Section
-                  const Text(
-                    'Achievements',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkCard,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Column(
-                      children: [
-                        _buildAchievement(
-                          '🎓',
-                          'Brain Beginner',
-                          'Complete your first game',
-                          user.stats.questionsAnswered > 0,
-                        ),
-                        const Divider(color: Colors.white10, height: 24),
-                        _buildAchievement(
-                          '🏆',
-                          'Quiz Master',
-                          'Answer 100 questions',
-                          user.stats.questionsAnswered >= 100,
-                        ),
-                        const Divider(color: Colors.white10, height: 24),
-                        _buildAchievement(
-                          '💯',
-                          'Perfect Score',
-                          'Get 100% accuracy in a game',
-                          user.stats.accuracy == 1.0,
-                        ),
-                        const Divider(color: Colors.white10, height: 24),
-                        _buildAchievement(
-                          '💎',
-                          'Coin Collector',
-                          'Earn 1000 coins',
-                          user.coins >= 1000,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-
-                  // Premium Section (if not premium)
-                  if (!PremiumService().isPremium) ...[
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const PremiumScreen(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          gradient: AppTheme.primaryGradient,
-                          borderRadius: BorderRadius.circular(16),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppTheme.primaryNeon.withOpacity(0.3),
-                              blurRadius: 20,
-                              offset: const Offset(0, 8),
-                            ),
-                          ],
-                        ),
-                        child: Row(
+                  // Premium Banner (if not premium)
+                  Consumer<PremiumService>(
+                    builder: (context, premiumService, _) {
+                      if (!premiumService.isPremium) {
+                        return Column(
                           children: [
-                            const Icon(
-                              Icons.stars,
-                              color: Colors.white,
-                              size: 48,
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Go Premium!',
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Ad-free experience from \$3.99/month',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.arrow_forward_ios,
-                              color: Colors.white,
-                              size: 20,
-                            ),
+                            _buildPremiumBanner(context),
+                            const SizedBox(height: 24),
                           ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                  ],
+                        );
+                      }
+                      return const SizedBox.shrink();
+                    },
+                  ),
 
                   // Settings Section
                   const Text(
                     'Settings',
                     style: TextStyle(
-                      fontSize: 20,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: AppTheme.darkCard,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white10),
-                    ),
-                    child: Column(
-                      children: [
-                        _buildSettingItem(
-                          Icons.notifications,
-                          'Notifications',
-                          'Manage notifications',
-                          () {},
-                        ),
-                        const Divider(height: 1, color: Colors.white10),
-                        _buildSettingItem(
-                          Icons.language,
-                          'Language',
-                          'English',
-                          () {},
-                        ),
-                        const Divider(height: 1, color: Colors.white10),
-                        _buildSettingItem(
-                          Icons.help,
-                          'Help & Support',
-                          'Get help',
-                          () {},
-                        ),
-                        const Divider(height: 1, color: Colors.white10),
-                        _buildSettingItem(
-                          Icons.info,
-                          'About',
-                          'MindRush v1.0.0 — The Thinking Game.',
-                          () {},
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-
-                  // Sign Up Button (for guest users)
-                  if (user.isGuest)
-                    SizedBox(
-                      width: double.infinity,
-                      height: 54,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          // TODO: Navigate to sign up
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Sign up coming soon!'),
-                            ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryNeon,
-                          foregroundColor: AppTheme.darkBg,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: const Text(
-                          'Sign Up & Get 100 Coins',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
+                  const SizedBox(height: 12),
+                  _buildSettingsCard(context, isSignedIn),
+                  
+                  // Account Actions (Bottom)
+                  if (isSignedIn) ...[
+                    const SizedBox(height: 24),
+                    _buildAccountActions(context),
+                  ],
+                  
+                  const SizedBox(height: 40),
                 ],
               ),
             );
@@ -390,9 +100,188 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildAuthenticationCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: AppTheme.primaryGradient,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryNeon.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.account_circle, size: 48, color: Colors.white),
+          const SizedBox(height: 12),
+          const Text(
+            'Sign In or Create Account',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Unlock all features and get 100 coins bonus!',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.white.withOpacity(0.9),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SimpleAuthScreen()),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: AppTheme.darkBg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 0,
+              ),
+              child: const Text(
+                'Get Started',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileHeader(BuildContext context, dynamic user, AuthService authService) {
+    return Center(
+      child: Column(
+        children: [
+          // Avatar
+          Container(
+            width: 100,
+            height: 100,
+            decoration: BoxDecoration(
+              gradient: AppTheme.primaryGradient,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primaryNeon.withOpacity(0.4),
+                  blurRadius: 20,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                user.username[0].toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 48,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Username
+          Text(
+            user.username,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          
+          // Status Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            decoration: BoxDecoration(
+              color: authService.isSignedIn
+                  ? AppTheme.primaryNeon.withOpacity(0.2)
+                  : Colors.orange.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: authService.isSignedIn
+                    ? AppTheme.primaryNeon
+                    : Colors.orange,
+              ),
+            ),
+            child: Text(
+              authService.isSignedIn
+                  ? '✓ ${authService.providerName}'
+                  : '👤 Guest',
+              style: TextStyle(
+                fontSize: 12,
+                color: authService.isSignedIn
+                    ? AppTheme.primaryNeon
+                    : Colors.orange,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          
+          // Email (if signed in)
+          if (authService.isSignedIn && authService.email != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              authService.email!,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsGrid(dynamic user) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard('🪙', user.coins.toString(), 'Coins', Colors.amber),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard('🔥', user.streakCount.toString(), 'Streak', Colors.orange),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: _buildStatCard(
+            '🎯',
+            '${(user.stats.accuracy * 100).toStringAsFixed(0)}%',
+            'Accuracy',
+            AppTheme.primaryNeon,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildStatCard(String emoji, String value, String label, Color color) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.darkCard,
         borderRadius: BorderRadius.circular(12),
@@ -400,21 +289,20 @@ class ProfileScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
-          const SizedBox(height: 8),
+          Text(emoji, style: const TextStyle(fontSize: 20)),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 24,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: color,
             ),
           ),
-          const SizedBox(height: 4),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 10,
               color: Colors.white60,
             ),
           ),
@@ -423,86 +311,136 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildAchievement(
-    String emoji,
-    String title,
-    String description,
-    bool isUnlocked,
-  ) {
-    return Row(
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: isUnlocked
-                ? AppTheme.primaryNeon.withOpacity(0.2)
-                : Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(12),
+  Widget _buildPremiumBanner(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const PremiumScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.purple.shade700, Colors.purple.shade500],
           ),
-          child: Center(
-            child: Text(
-              emoji,
-              style: TextStyle(
-                fontSize: 28,
-                color: isUnlocked ? null : Colors.white.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.purple.withOpacity(0.3),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.star, color: Colors.white, size: 24),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Go Premium!',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'Ad-free from \$3.99/month',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
+            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: isUnlocked ? Colors.white : Colors.white60,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isUnlocked ? Colors.white60 : Colors.white.withOpacity(0.4),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Icon(
-          isUnlocked ? Icons.check_circle : Icons.lock,
-          color: isUnlocked ? Colors.green : Colors.white30,
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildSettingItem(
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
-  ) {
+  Widget _buildSettingsCard(BuildContext context, bool isSignedIn) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.darkCard,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          _buildSettingItem(
+            icon: Icons.notifications,
+            title: 'Notifications',
+            subtitle: 'Manage notifications',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const NotificationSettingsScreen()),
+              );
+            },
+          ),
+          const Divider(height: 1, color: Colors.white10),
+          _buildSettingItem(
+            icon: Icons.language,
+            title: 'Language',
+            subtitle: 'English',
+            onTap: () {},
+          ),
+          const Divider(height: 1, color: Colors.white10),
+          _buildSettingItem(
+            icon: Icons.help,
+            title: 'Help & Support',
+            subtitle: 'Get help',
+            onTap: () {},
+          ),
+          const Divider(height: 1, color: Colors.white10),
+          _buildSettingItem(
+            icon: Icons.info,
+            title: 'About',
+            subtitle: 'MindRush v1.0.3 — The Thinking Game.',
+            onTap: () {},
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
     return ListTile(
-      leading: Icon(icon, color: AppTheme.primaryNeon),
+      leading: Icon(icon, color: AppTheme.primaryNeon, size: 24),
       title: Text(
         title,
         style: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.bold,
+          fontSize: 15,
+          fontWeight: FontWeight.w600,
           color: Colors.white,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(
-          fontSize: 14,
-          color: Colors.white60,
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.white.withOpacity(0.6),
         ),
       ),
       trailing: const Icon(
@@ -513,5 +451,218 @@ class ProfileScreen extends StatelessWidget {
       onTap: onTap,
     );
   }
-}
 
+  Widget _buildAccountActions(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Log Out Button
+        SizedBox(
+          height: 50,
+          child: OutlinedButton(
+            onPressed: () => _handleLogout(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.orange,
+              side: const BorderSide(color: Colors.orange, width: 2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.logout, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Log Out',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        // Delete Account Button
+        SizedBox(
+          height: 50,
+          child: OutlinedButton(
+            onPressed: () => _handleDeleteAccount(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red, width: 2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.delete_forever, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Delete Account',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _handleLogout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text(
+          'Log Out',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          'Are you sure you want to log out?',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            child: const Text('Log Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        await AuthService().signOut();
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const SimpleAuthScreen()),
+            (route) => false,
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error logging out: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _handleDeleteAccount(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.darkCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red, size: 28),
+            SizedBox(width: 12),
+            Text(
+              'Delete Account',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'This action cannot be undone!',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'All your data will be permanently deleted:',
+              style: TextStyle(color: Colors.white70),
+            ),
+            SizedBox(height: 8),
+            Text('• Profile and account', style: TextStyle(color: Colors.white60, fontSize: 13)),
+            Text('• Game progress and stats', style: TextStyle(color: Colors.white60, fontSize: 13)),
+            Text('• Coins and achievements', style: TextStyle(color: Colors.white60, fontSize: 13)),
+            Text('• All saved data', style: TextStyle(color: Colors.white60, fontSize: 13)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete Forever'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      try {
+        await AuthService().deleteAccount();
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const SimpleAuthScreen()),
+            (route) => false,
+          );
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account deleted successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.of(context).pop(); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error deleting account: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+}

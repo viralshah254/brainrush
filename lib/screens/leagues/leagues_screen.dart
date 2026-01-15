@@ -149,11 +149,11 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
       if (user.coins == 0) {
         showOutOfCoinsDialog(context);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Not enough coins! Need ${league.entryFee}, have ${user.coins}'),
-          ),
-        );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Not enough coins! Need ${league.entryFee}, have ${user.coins}'),
+        ),
+      );
       }
       return;
     }

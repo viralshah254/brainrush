@@ -10,12 +10,10 @@ import '../services/retention_service.dart';
 import '../widgets/retention_features_cards.dart';
 import '../widgets/daily_login_reward_dialog.dart';
 import 'game_screen.dart';
-import 'leagues/leagues_screen.dart';
 import 'friends/play_with_friends_screen.dart';
 import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
 import 'coin_store_screen.dart';
-import 'notification_settings_screen.dart';
 import '../providers/game_provider.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -54,17 +52,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     await userProvider.initializeSmartNotifications();
   }
   
-  void _checkDailyLoginReward() {
+  void _checkDailyLoginReward() async {
     final userProvider = context.read<UserProvider>();
     final retentionService = context.read<RetentionService>();
     final user = userProvider.user;
     
     if (user == null) return;
     
+    // First, check if reward was already claimed today using date-based check
+    final hasClaimedToday = await userProvider.hasClaimedDailyRewardToday();
+    if (hasClaimedToday) {
+      // Already claimed today - just update login streak but don't show dialog
+      userProvider.checkDailyLogin();
+      retentionService.checkQuestRefresh();
+      return;
+    }
+    
     // Check if user should receive login reward
     final daysAway = userProvider.checkDailyLogin();
     
-    if (!user.hasClaimedDailyLoginReward && daysAway >= 0) {
+    // Get updated user after checkDailyLogin (might have updated streak)
+    final updatedUser = userProvider.user;
+    if (updatedUser == null) return;
+    
+    // Only show if not claimed today
+    if (!updatedUser.hasClaimedDailyLoginReward && daysAway >= 0) {
       // Show comeback bonus if applicable
       if (daysAway >= 2) {
         final comebackBonus = retentionService.getComebackBonus(daysAway);
@@ -86,10 +98,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // Show daily login reward
       Future.delayed(const Duration(milliseconds: 800), () {
         if (!mounted) return;
-        final reward = DailyLoginReward.getRewardForDay(user.consecutiveLoginDays);
+        final reward = DailyLoginReward.getRewardForDay(updatedUser.consecutiveLoginDays);
         showDailyLoginRewardDialog(
           context,
-          loginDay: user.consecutiveLoginDays,
+          loginDay: updatedUser.consecutiveLoginDays,
           coinsEarned: reward.coins,
           onClaimed: () {
             userProvider.addCoins(reward.coins);
@@ -151,25 +163,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         elevation: 0,
         automaticallyImplyLeading: false,
         actions: [
-          // Notification Settings Button
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                shape: BoxShape.circle,
-              ),
-              child: const Text('🔔', style: TextStyle(fontSize: 18)),
-            ),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationSettingsScreen(),
-                ),
-              );
-            },
-          ),
           // Coin Store Button
           IconButton(
             icon: Container(
@@ -193,19 +186,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(16),
           child: Consumer<ModeProvider>(
             builder: (context, modeProvider, _) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _buildHeader(context),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 16),
                   _buildModeToggle(context),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 16),
                   
                   // Retention features (daily quests, lucky spin, free coins)
                   const RetentionFeaturesCards(),
+                  const SizedBox(height: 12),
                   
                   // Content changes based on mode
                   if (modeProvider.isEducationMode)
@@ -257,7 +251,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildEnhancedCoinsCard(int coins) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
@@ -327,7 +321,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildStatCard(String emoji, String value, String label) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: AppTheme.darkCard,
         borderRadius: BorderRadius.circular(12),
@@ -335,12 +329,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
       child: Column(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 24)),
-          const SizedBox(height: 4),
+          Text(emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(height: 2),
           Text(
             value,
             style: const TextStyle(
-              fontSize: 20,
+              fontSize: 18,
               fontWeight: FontWeight.bold,
               color: AppTheme.primaryNeon,
             ),
@@ -348,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           Text(
             label,
             style: const TextStyle(
-              fontSize: 11,
+              fontSize: 10,
               color: Colors.white60,
             ),
           ),
@@ -401,6 +395,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     bool isSelected,
     VoidCallback onTap,
   ) {
+    // Education mode is now unlocked - all navigation items are accessible
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -439,8 +434,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final userProvider = context.read<UserProvider>();
     final user = userProvider.user;
 
-    // Check if user has education profile setup
-    if (user?.gradeLevel == null || user?.age == null) {
+    // Check if user has education profile setup (check both age and educationModeEnabled flag)
+    final hasEducationSetup = user?.educationModeEnabled == true && 
+                               user?.age != null && 
+                               (user?.gradeLevel != null || user?.age != null && user!.age! >= 18);
+
+    if (!hasEducationSetup) {
       // Show setup prompt
       final shouldSetup = await showDialog<bool>(
         context: context,
@@ -481,7 +480,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         );
 
-        if (result == true || context.mounted) {
+        if (result == true && context.mounted) {
           // Settings saved, switch mode
           await modeProvider.switchMode(AppMode.education);
         }
@@ -594,7 +593,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: GestureDetector(
             onTap: onTap,
             child: Container(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppTheme.darkCard,
                 borderRadius: BorderRadius.circular(16),
@@ -603,17 +602,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: Row(
                 children: [
                   Container(
-                    width: 60,
-                    height: 60,
+                    width: 52,
+                    height: 52,
                     decoration: BoxDecoration(
                       color: color.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Center(
-                      child: Text(emoji, style: const TextStyle(fontSize: 28)),
+                      child: Text(emoji, style: const TextStyle(fontSize: 26)),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,12 +620,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         Text(
                           title,
                           style: const TextStyle(
-                            fontSize: 18,
+                            fontSize: 17,
                             fontWeight: FontWeight.bold,
                             color: Colors.white,
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
                         Text(
                           subtitle,
                           style: const TextStyle(
@@ -644,6 +643,122 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLockedModeCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required String emoji,
+    required Color color,
+  }) {
+    return Opacity(
+      opacity: 0.6,
+      child: Stack(
+        children: [
+          _buildModeCard(
+            context,
+            title: title,
+            subtitle: subtitle,
+            emoji: emoji,
+            color: color,
+            onTap: () => _showLockedFeatureDialog(context, title),
+          ),
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Center(
+                child: Icon(Icons.lock, size: 48, color: Colors.white70),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLockedFeatureDialog(BuildContext context, String featureName) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF1a1f2e), Color(0xFF2d1b3d)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.deepPurple, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.deepPurple.withOpacity(0.3),
+                blurRadius: 20,
+                spreadRadius: 5,
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.lock, size: 64, color: Colors.deepPurple),
+              const SizedBox(height: 16),
+              Text(
+                featureName,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Coming Soon!',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.white70,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'This feature is currently under development and will be available in a future update.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white54,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: const Text(
+                  'Got it',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -821,9 +936,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<Widget> _buildGeneralModeCards(BuildContext context) {
     return [
       _buildDailyChallengeCard(context),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
       _buildAnimatedCampaignCard(context),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
       _buildModeCard(
         context,
         title: 'Practice Mode',
@@ -832,7 +947,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: AppTheme.primaryNeon,
         onTap: () => _showCategoryDialog(context),
       ),
-      const SizedBox(height: 16),
+      const SizedBox(height: 12),
       _buildModeCard(
         context,
         title: 'Play With Friends',
@@ -848,22 +963,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           );
         },
       ),
-      const SizedBox(height: 16),
-      _buildModeCard(
+      const SizedBox(height: 12),
+      _buildLockedModeCard(
         context,
         title: 'Global League',
         subtitle: 'Ranked • 10 rounds • Worldwide',
         emoji: '🏆',
         color: Colors.amber,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const LeaguesScreen(),
-            ),
-          );
-        },
       ),
+      const SizedBox(height: 12),
     ];
   }
 
@@ -888,7 +996,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     
     // Daily Challenge - Education Version
     cards.add(_buildDailyEducationCard(context, gradeDisplay));
-    cards.add(const SizedBox(height: 16));
+    cards.add(const SizedBox(height: 12));
+    
+    // Education Campaign (only for high school age)
+    if (!isBeyondHighSchool && user?.gradeLevel != null) {
+      cards.add(_buildEducationCampaignCard(context, user!.gradeLevel!));
+      cards.add(const SizedBox(height: 12));
+    }
     
     // Subject Practice (only for high school age)
     if (!isBeyondHighSchool) {
@@ -900,7 +1014,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: AppTheme.primaryNeon,
         onTap: () => _showEducationSubjectDialog(context),
       ));
-      cards.add(const SizedBox(height: 16));
+      cards.add(const SizedBox(height: 12));
     }
     
     // SAT Prep (if user has SAT)
@@ -913,7 +1027,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: Colors.blue,
         onTap: () => _showEducationSubjectDialog(context, isSat: true),
       ));
-      cards.add(const SizedBox(height: 16));
+      cards.add(const SizedBox(height: 12));
     }
     
     // GMAT Prep (if user has GMAT)
@@ -926,175 +1040,135 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: Colors.orange,
         onTap: () => _showEducationSubjectDialog(context, isGmat: true),
       ));
-      cards.add(const SizedBox(height: 16));
+      cards.add(const SizedBox(height: 12));
     }
     
-    // Study With Friends - Education Version
-    cards.add(_buildModeCard(
+    // Study With Friends - Education Version (LOCKED)
+    cards.add(_buildLockedModeCard(
       context,
       title: 'Study With Friends',
       subtitle: 'Test each other • Choose subjects together',
       emoji: '👥',
       color: Colors.green,
-      onTap: () => _showEducationFriendsDialog(context),
     ));
-    cards.add(const SizedBox(height: 16));
+    cards.add(const SizedBox(height: 12));
     
-    // Grade League (only for high school age)
+    // Grade League (LOCKED)
     if (!isBeyondHighSchool) {
-      cards.add(_buildModeCard(
+      cards.add(_buildLockedModeCard(
         context,
         title: 'Grade League',
         subtitle: 'Compete with $gradeDisplay students',
         emoji: '🏆',
         color: Colors.amber,
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => const LeaguesScreen(),
-            ),
-          );
-        },
       ));
     }
     
     return cards;
   }
   
-  void _showEducationFriendsDialog(BuildContext context) {
-    final userProvider = context.read<UserProvider>();
-    final user = userProvider.user;
-    final subscriptionService = context.read<EducationSubscriptionService>();
-    
-    // Get available study modes
-    final examFocus = user?.examFocus ?? 'NONE';
-    final hasSat = examFocus == 'SAT' || subscriptionService.hasSatSubscription;
-    final hasGmat = examFocus == 'GMAT' || subscriptionService.hasGmatSubscription;
-    final age = user?.age ?? 0;
-    final isBeyondHighSchool = age >= 19;
-    
-    List<Map<String, dynamic>> studyModes = [];
-    
-    // School subjects (for high school age)
-    if (!isBeyondHighSchool) {
-      studyModes.add({
-        'title': 'School Subjects',
-        'subtitle': 'Math, Science, English, etc.',
-        'emoji': '📚',
-        'color': AppTheme.primaryNeon,
-        'onTap': () {
-          Navigator.pop(context);
-          _showEducationSubjectDialog(context, isFriendsMode: true);
-        },
-      });
-    }
-    
-    // SAT prep
-    if (hasSat) {
-      studyModes.add({
-        'title': 'SAT Practice',
-        'subtitle': 'Math & Reading/Writing',
-        'emoji': '🎓',
-        'color': Colors.blue,
-        'onTap': () {
-          Navigator.pop(context);
-          _showEducationSubjectDialog(context, isSat: true, isFriendsMode: true);
-        },
-      });
-    }
-    
-    // GMAT prep
-    if (hasGmat) {
-      studyModes.add({
-        'title': 'GMAT Practice',
-        'subtitle': 'Quantitative & Verbal',
-        'emoji': '💼',
-        'color': Colors.orange,
-        'onTap': () {
-          Navigator.pop(context);
-          _showEducationSubjectDialog(context, isGmat: true, isFriendsMode: true);
-        },
-      });
-    }
 
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: AppTheme.darkCard,
-          title: const Text(
-            '👥 Study With Friends',
-            style: TextStyle(color: Colors.white, fontSize: 22),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Choose what to practice together:',
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              ...studyModes.map((mode) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => mode['onTap'](),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.darkBg,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: (mode['color'] as Color).withOpacity(0.3),
-                          width: 1,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            mode['emoji'] as String,
-                            style: const TextStyle(fontSize: 32),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  mode['title'] as String,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  mode['subtitle'] as String,
-                                  style: const TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios,
-                            color: mode['color'] as Color,
-                            size: 16,
-                          ),
-                        ],
-                      ),
-                    ),
+  Widget _buildEducationCampaignCard(BuildContext context, String gradeLevelCode) {
+    final gradeLevel = GradeLevel.fromCode(gradeLevelCode);
+    final gradeDisplay = gradeLevel?.displayName ?? 'your grade';
+    
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Transform.scale(
+          scale: 1.0 + (_animationController.value * 0.015),
+          child: GestureDetector(
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => CampaignScreen(
+                    isEducationMode: true,
+                    gradeLevel: gradeLevelCode,
                   ),
                 ),
-              )),
-            ],
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.blue.shade400,
+                    Colors.indigo.shade600,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.shade400.withOpacity(0.4),
+                    blurRadius: 15,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              '🎓',
+                              style: TextStyle(fontSize: 32),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Education Campaign',
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$gradeDisplay • 500 rounds • Grade-specific',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.white.withOpacity(0.9),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Start Learning →',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         );
       },

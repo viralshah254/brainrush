@@ -3,13 +3,22 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/campaign_service.dart';
+import '../../services/education_campaign_service.dart';
 import '../../models/campaign_round.dart';
+import '../../models/app_mode.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/out_of_coins_dialog.dart';
 import 'campaign_game_screen.dart';
 
 class CampaignScreen extends StatefulWidget {
-  const CampaignScreen({super.key});
+  final bool isEducationMode;
+  final String? gradeLevel;
+  
+  const CampaignScreen({
+    super.key,
+    this.isEducationMode = false,
+    this.gradeLevel,
+  });
 
   @override
   State<CampaignScreen> createState() => _CampaignScreenState();
@@ -31,7 +40,13 @@ class _CampaignScreenState extends State<CampaignScreen>
 
     // Initialize campaign service
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<CampaignService>().initialize();
+      if (widget.isEducationMode && widget.gradeLevel != null) {
+        // Education campaign service will be initialized by the Provider
+        // Access it via context after the widget tree is built
+      } else {
+        // Use general campaign service
+        context.read<CampaignService>().initialize();
+      }
     });
   }
 
@@ -44,6 +59,38 @@ class _CampaignScreenState extends State<CampaignScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.isEducationMode && widget.gradeLevel != null) {
+      // Education campaign mode - provide EducationCampaignService at screen level
+      return ChangeNotifierProvider<EducationCampaignService>(
+        create: (_) {
+          final service = EducationCampaignService(gradeLevel: widget.gradeLevel!);
+          // Initialize the service asynchronously
+          service.initialize();
+          return service;
+        },
+        child: Scaffold(
+          backgroundColor: AppTheme.darkBg,
+          body: Consumer<EducationCampaignService>(
+            builder: (context, campaignService, _) {
+              if (campaignService.rounds.isEmpty) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              return CustomScrollView(
+                controller: _scrollController,
+                slivers: [
+                  _buildEducationAppBar(campaignService),
+                  _buildEducationStats(campaignService),
+                  _buildEducationRoundsList(campaignService),
+                ],
+              );
+            },
+          ),
+        ),
+      );
+    }
+    
+    // Normal campaign mode
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       body: Consumer<CampaignService>(
@@ -213,7 +260,8 @@ class _CampaignScreenState extends State<CampaignScreen>
   }
 
   Widget _buildRoundCard(CampaignRound round, int index) {
-    final isCurrentRound = round.roundNumber == context.read<CampaignService>().currentRound;
+    final campaignService = context.read<CampaignService>();
+    final isCurrentRound = round.roundNumber == campaignService.currentRound;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -483,7 +531,11 @@ class _CampaignScreenState extends State<CampaignScreen>
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) =>
-            CampaignGameScreen(round: round),
+            CampaignGameScreen(
+          round: round,
+          isEducationMode: widget.isEducationMode,
+          gradeLevel: widget.gradeLevel,
+        ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(
             opacity: animation,
@@ -503,6 +555,253 @@ class _CampaignScreenState extends State<CampaignScreen>
   void _showInsufficientCoinsDialog(int required) {
     // Show the unified out of coins dialog
     showOutOfCoinsDialog(context);
+  }
+  
+  // Education-specific UI methods
+  Widget _buildEducationAppBar(EducationCampaignService service) {
+    final gradeLevel = GradeLevel.fromCode(widget.gradeLevel ?? '');
+    final gradeDisplay = gradeLevel?.displayName ?? 'your grade';
+    
+    return SliverAppBar(
+      expandedHeight: 120,
+      floating: false,
+      pinned: true,
+      backgroundColor: AppTheme.darkBg,
+      flexibleSpace: FlexibleSpaceBar(
+        title: Text(
+          '🎓 Education Campaign\n$gradeDisplay',
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        background: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.blue.withOpacity(0.3),
+                Colors.indigo.withOpacity(0.2),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEducationStats(EducationCampaignService service) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            Expanded(
+              child: _buildStatCard(
+                '${service.currentRound}/500',
+                'Current Round',
+                Icons.flag,
+                Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildStatCard(
+                '${service.totalStars}',
+                'Total Stars',
+                Icons.star,
+                Colors.amber,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildStatCard(
+                '${service.completedRounds}',
+                'Completed',
+                Icons.check_circle,
+                Colors.green,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEducationRoundsList(EducationCampaignService service) {
+    final visibleRounds = service.rounds
+        .where((r) => r.roundNumber <= service.currentRound + 5)
+        .toList();
+
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      sliver: SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) {
+            final round = visibleRounds[index];
+            return FadeTransition(
+              opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
+                CurvedAnimation(
+                  parent: _animationController,
+                  curve: Interval(
+                    index * 0.05,
+                    (index * 0.05) + 0.5,
+                    curve: Curves.easeOut,
+                  ),
+                ),
+              ),
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.3, 0),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: _animationController,
+                    curve: Interval(
+                      index * 0.05,
+                      (index * 0.05) + 0.5,
+                      curve: Curves.easeOut,
+                    ),
+                  ),
+                ),
+                child: _buildEducationRoundCard(round, index, service),
+              ),
+            );
+          },
+          childCount: visibleRounds.length,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEducationRoundCard(CampaignRound round, int index, EducationCampaignService service) {
+    final isCurrentRound = round.roundNumber == service.currentRound;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: GestureDetector(
+        onTap: () {
+          if (round.isLocked) {
+            _showLockedDialog(round);
+          } else {
+            _startRound(round);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          decoration: BoxDecoration(
+            gradient: round.isLocked
+                ? null
+                : LinearGradient(
+                    colors: [
+                      round.difficulty.color.withOpacity(0.2),
+                      round.difficulty.color.withOpacity(0.05),
+                    ],
+                  ),
+            color: round.isLocked ? AppTheme.darkCard.withOpacity(0.5) : null,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: round.isLocked
+                  ? Colors.grey.withOpacity(0.3)
+                  : round.difficulty.color.withOpacity(0.5),
+              width: 2,
+            ),
+          ),
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          round.title,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: round.isLocked ? Colors.grey : Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          round.description,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: round.isLocked
+                                ? Colors.grey
+                                : Colors.white70,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (round.isLocked)
+                    const Icon(Icons.lock, color: Colors.grey, size: 24)
+                  else if (round.isCompleted)
+                    Row(
+                      children: List.generate(
+                        round.starsEarned ?? 0,
+                        (_) => const Icon(Icons.star, color: Colors.amber, size: 20),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: round.difficulty.color.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      round.difficulty.name.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: round.difficulty.color,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${round.questionCount} questions',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white60,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (isCurrentRound)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Text(
+                        'CURRENT',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -15,6 +15,8 @@ import 'services/education_subscription_service.dart';
 import 'services/retention_service.dart';
 import 'services/fcm_service.dart';
 import 'services/local_notification_service.dart';
+import 'services/education_question_bank.dart';
+import 'services/version_check_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -27,7 +29,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize Firebase
+  // Initialize Firebase (REQUIRED)
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -36,7 +38,9 @@ void main() async {
     print('✅ Firebase initialized successfully');
   } catch (e) {
     // ignore: avoid_print
-    print('⚠️ Firebase initialization error: $e');
+    print('❌ CRITICAL: Firebase initialization failed: $e');
+    // Don't continue if Firebase fails - it's required for auth
+    rethrow;
   }
 
   // Initialize Firebase Cloud Messaging
@@ -86,6 +90,32 @@ void main() async {
   } catch (e) {
     // ignore: avoid_print
     print('⚠️ Education subscriptions not available (Simulator) - Education subscriptions disabled');
+  }
+
+  // Initialize Education Question Bank (pre-load questions)
+  try {
+    // ignore: avoid_print
+    print('📚 Pre-loading education questions...');
+    await EducationQuestionBank.initialize();
+    // ignore: avoid_print
+    print('✅ Education questions pre-loaded successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Error pre-loading education questions: $e');
+    // Don't block app startup - questions will load on demand
+  }
+
+  // Initialize Version Check Service
+  try {
+    // ignore: avoid_print
+    print('🔍 Initializing version check service...');
+    await VersionCheckService().initialize();
+    // ignore: avoid_print
+    print('✅ Version check service initialized');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Version check service initialization error: $e');
+    // Don't block app startup - version check will use defaults
   }
 
   runApp(const MindRushApp());

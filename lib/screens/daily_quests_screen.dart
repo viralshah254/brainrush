@@ -3,6 +3,10 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../services/retention_service.dart';
 import '../providers/user_provider.dart';
+import '../models/daily_quest.dart';
+import '../providers/game_provider.dart';
+import 'campaign/campaign_screen.dart';
+import 'game_screen.dart';
 
 class DailyQuestsScreen extends StatelessWidget {
   const DailyQuestsScreen({super.key});
@@ -104,16 +108,19 @@ class DailyQuestsScreen extends StatelessWidget {
                         final quest = retentionService.dailyQuests[index];
                         return _QuestCard(
                           quest: quest,
-                          onClaim: () {
-                            final coins = retentionService.claimQuestReward(quest.id);
+                          onTap: () => _handleQuestTap(context, quest),
+                          onClaim: () async {
+                            final coins = await retentionService.claimQuestReward(quest.id);
                             if (coins > 0) {
                               userProvider.addCoins(coins);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('🎉 +$coins coins earned!'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('🎉 +$coins coins earned!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
                             }
                           },
                         );
@@ -139,35 +146,78 @@ class DailyQuestsScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: Row(
+                child: Column(
                   children: [
-                    const Text(
-                      '🏆',
-                      style: TextStyle(fontSize: 40),
+                    Row(
+                      children: [
+                        const Text(
+                          '🏆',
+                          style: TextStyle(fontSize: 40),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'All Quests Complete!',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppTheme.darkBg,
+                                ),
+                              ),
+                              Text(
+                                retentionService.allQuestsBonusClaimed
+                                    ? 'Amazing work! Come back tomorrow for new quests.'
+                                    : 'Claim your bonus reward!',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: AppTheme.darkBg.withOpacity(0.8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'All Quests Complete!',
+                    if (!retentionService.allQuestsBonusClaimed) ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final bonus = await retentionService.claimAllQuestsBonus();
+                            if (bonus > 0) {
+                              userProvider.addCoins(bonus);
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('🎉 +$bonus bonus coins earned!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.darkBg,
+                            foregroundColor: Colors.amber,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Claim +500 Bonus Coins',
                             style: TextStyle(
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: AppTheme.darkBg,
                             ),
                           ),
-                          Text(
-                            'Amazing work! Come back tomorrow for new quests.',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: AppTheme.darkBg.withOpacity(0.8),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -176,36 +226,76 @@ class DailyQuestsScreen extends StatelessWidget {
       ),
     );
   }
+
+  void _handleQuestTap(BuildContext context, DailyQuest quest) {
+    switch (quest.type) {
+      case QuestType.playGames:
+        // Navigate to home screen
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        break;
+      case QuestType.playDaily:
+        // Navigate to daily challenge
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const GameScreen(
+              category: 'Mixed',
+              questionCount: 10,
+              mode: GameMode.daily,
+            ),
+          ),
+        );
+        break;
+      case QuestType.completeCampaign:
+        // Navigate to campaign screen
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => const CampaignScreen(),
+          ),
+        );
+        break;
+      case QuestType.playWithFriends:
+        // Hidden - do nothing
+        break;
+      default:
+        // Navigate to home screen for other quests
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        break;
+    }
+  }
 }
 
 class _QuestCard extends StatelessWidget {
-  final dynamic quest;
+  final DailyQuest quest;
+  final VoidCallback? onTap;
   final VoidCallback onClaim;
 
   const _QuestCard({
     required this.quest,
+    this.onTap,
     required this.onClaim,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: AppTheme.darkCard,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: quest.isCompleted
-              ? Colors.green.withOpacity(0.5)
-              : Colors.white.withOpacity(0.1),
-          width: 2,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: quest.isCompleted
+                ? Colors.green.withOpacity(0.5)
+                : Colors.white.withOpacity(0.1),
+            width: 2,
+          ),
         ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Row(
               children: [
                 Text(
@@ -322,6 +412,7 @@ class _QuestCard extends StatelessWidget {
               ],
             ),
           ],
+          ),
         ),
       ),
     );

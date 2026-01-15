@@ -44,8 +44,8 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyCAl0_-vQ815i_OaxybN27euuamI_TZXQo',
-    appId: '1:1053858925589:android:placeholder',
+    apiKey: 'AIzaSyDZB8INRh6AWv9HG1xpuHzzoBWBS4yXwYA',
+    appId: '1:1053858925589:android:0a1538af37ec4aad83521c',
     messagingSenderId: '1053858925589',
     projectId: 'mind-rush-15036',
     storageBucket: 'mind-rush-15036.firebasestorage.app',

@@ -29,13 +29,26 @@ class CampaignService extends ChangeNotifier {
   void _generateRounds() {
     _rounds.clear();
     
-    final categories = ['Math', 'Science', 'History', 'Geography', 'Literature', 'Mixed'];
+    // Define subjects with rotation pattern
+    final subjects = [
+      'General Knowledge',
+      'Science',
+      'Math',
+      'History',
+      'Geography',
+      'Literature',
+      'Technology',
+      'Sports',
+      'Entertainment',
+      'Nature',
+    ];
     
-    // Generate 500 rounds
+    // Generate 500 rounds with different subjects
     for (int i = 1; i <= 500; i++) {
       final difficulty = _getDifficultyForRound(i);
-      final category = categories[i % categories.length];
-      final questionCount = 10 + (i % 6); // 10-15 questions
+      // Rotate through subjects, ensuring variety
+      final category = subjects[(i - 1) % subjects.length];
+      final questionCount = 10; // Fixed 10 questions per round
       
       _rounds.add(CampaignRound(
         roundNumber: i,
@@ -53,9 +66,15 @@ class CampaignService extends ChangeNotifier {
   }
 
   RoundDifficulty _getDifficultyForRound(int round) {
-    if (round <= 50) return RoundDifficulty.easy;
+    // First 50 rounds: Easy, Medium, Hard (no super hard)
+    if (round <= 50) {
+      if (round <= 17) return RoundDifficulty.easy;
+      if (round <= 34) return RoundDifficulty.medium;
+      return RoundDifficulty.hard;
+    }
+    // After round 50: Include super hard
     if (round <= 150) return RoundDifficulty.medium;
-    if (round <= 350) return RoundDifficulty.hard;
+    if (round <= 300) return RoundDifficulty.hard;
     return RoundDifficulty.superHard;
   }
 

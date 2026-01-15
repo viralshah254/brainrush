@@ -60,6 +60,28 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   void _onTabTapped(int index) {
+    // Lock Leagues (index 1) and Friends (index 2) for now
+    if (index == 1 || index == 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.lock, color: Colors.white),
+              const SizedBox(width: 12),
+              Text(
+                '${index == 1 ? "Leagues" : "Friends"} - Coming Soon!',
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.deepPurple,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    
     if (_currentIndex != index) {
       setState(() {
         _currentIndex = index;
@@ -120,6 +142,7 @@ class _MainNavigationState extends State<MainNavigation>
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
+    final isLocked = (index == 1 || index == 2); // Leagues and Friends locked
 
     return Expanded(
       child: GestureDetector(
@@ -134,36 +157,63 @@ class _MainNavigationState extends State<MainNavigation>
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: Stack(
+            alignment: Alignment.center,
             children: [
-              AnimatedBuilder(
-                animation: _animationController,
-                builder: (context, child) {
-                  return Transform.scale(
-                    scale: isSelected ? _iconAnimations[index].value : 1.0,
-                    child: Icon(
-                      icon,
-                      color: isSelected
-                          ? AppTheme.primaryNeon
-                          : Colors.white.withOpacity(0.5),
-                      size: 26,
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedBuilder(
+                    animation: _animationController,
+                    builder: (context, child) {
+                      return Transform.scale(
+                        scale: isSelected ? _iconAnimations[index].value : 1.0,
+                        child: Icon(
+                          icon,
+                          color: isLocked
+                              ? Colors.white.withOpacity(0.3)
+                              : isSelected
+                                  ? AppTheme.primaryNeon
+                                  : Colors.white.withOpacity(0.5),
+                          size: 26,
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 4),
+                  AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 300),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: isLocked
+                          ? Colors.white.withOpacity(0.3)
+                          : isSelected
+                              ? AppTheme.primaryNeon
+                              : Colors.white.withOpacity(0.5),
                     ),
-                  );
-                },
+                    child: Text(label),
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              AnimatedDefaultTextStyle(
-                duration: const Duration(milliseconds: 300),
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                  color: isSelected
-                      ? AppTheme.primaryNeon
-                      : Colors.white.withOpacity(0.5),
+              if (isLocked)
+                Positioned(
+                  top: 0,
+                  right: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.darkCard, width: 2),
+                    ),
+                    child: const Icon(
+                      Icons.lock,
+                      size: 12,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
-                child: Text(label),
-              ),
             ],
           ),
         ),

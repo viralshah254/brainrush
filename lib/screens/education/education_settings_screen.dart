@@ -14,13 +14,52 @@ class EducationSettingsScreen extends StatefulWidget {
 }
 
 class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
-  int? _selectedAge;
+  String? _selectedAgeRange; // Age range like "10-12", "12-15", etc.
+  int? _selectedAge; // Calculated representative age from range
   String? _selectedEducationLevel; // 'HIGH_SCHOOL' or 'UNIVERSITY'
   String? _selectedSchoolSystem;
   String? _selectedGradeLevel;
   String? _selectedChallengeGradeLevel;
   String? _selectedExamFocus;
   String? _selectedDegree; // For university students
+  
+  // Age ranges as specified
+  static const List<Map<String, dynamic>> _ageRanges = [
+    {'range': '10-12', 'min': 10, 'max': 12, 'representative': 11},
+    {'range': '12-15', 'min': 12, 'max': 15, 'representative': 13},
+    {'range': '15-18', 'min': 15, 'max': 18, 'representative': 16},
+    {'range': '18-21', 'min': 18, 'max': 21, 'representative': 19},
+    {'range': '21-25', 'min': 21, 'max': 25, 'representative': 23},
+    {'range': '25-30', 'min': 25, 'max': 30, 'representative': 27},
+    {'range': '30-35', 'min': 30, 'max': 35, 'representative': 32},
+    {'range': '35+', 'min': 35, 'max': 100, 'representative': 40},
+  ];
+  
+  // Convert age range to representative age for calculations
+  int? _getAgeFromRange(String? range) {
+    if (range == null) return null;
+    try {
+      final ageRange = _ageRanges.firstWhere(
+        (ar) => ar['range'] == range,
+      );
+      return ageRange['representative'] as int;
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  // Convert existing age to age range (for loading saved data)
+  String? _getRangeFromAge(int? age) {
+    if (age == null) return null;
+    for (final range in _ageRanges) {
+      final min = range['min'] as int;
+      final max = range['max'] as int;
+      if (age >= min && age <= max) {
+        return range['range'] as String;
+      }
+    }
+    return '35+'; // Default for ages above 35
+  }
   
   // Get available grades based on selected school system
   List<GradeLevel> get _availableGrades {
@@ -56,11 +95,16 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
       final user = context.read<UserProvider>().user;
       if (mounted) {
         setState(() {
+          // Convert saved age to age range
           _selectedAge = user?.age;
+          _selectedAgeRange = _getRangeFromAge(user?.age);
           _selectedSchoolSystem = user?.schoolSystem;
           _selectedGradeLevel = user?.gradeLevel;
           _selectedChallengeGradeLevel = user?.challengeGradeLevel ?? user?.gradeLevel;
           _selectedExamFocus = user?.examFocus ?? 'NONE';
+          _selectedEducationLevel = user?.educationModeEnabled == true && user?.age != null && user!.age! >= 18
+              ? (user.gradeLevel != null ? 'HIGH_SCHOOL' : 'UNIVERSITY')
+              : null;
         });
       }
     });
@@ -101,31 +145,37 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 8),
-                  DropdownButtonFormField<int>(
-                    value: _selectedAge,
+                  DropdownButtonFormField<String>(
+                    value: _selectedAgeRange,
                     decoration: _inputDecoration(),
                     dropdownColor: AppTheme.darkCard,
                     style: const TextStyle(color: Colors.white),
-                    items: List.generate(21, (index) => index + 10).map((age) {
+                    hint: const Text(
+                      'Select age range',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                    items: _ageRanges.map((ageRange) {
+                      final range = ageRange['range'] as String;
                       return DropdownMenuItem(
-                        value: age,
-                        child: Text('$age years old'),
+                        value: range,
+                        child: Text(range == '35+' ? '35+ years' : '$range years'),
                       );
                     }).toList(),
                     onChanged: (value) {
                       setState(() {
-                        _selectedAge = value;
+                        _selectedAgeRange = value;
+                        _selectedAge = _getAgeFromRange(value);
                         
                         // Auto-handle education level for different ages
-                        if (value != null) {
-                          if (value < 18) {
+                        if (_selectedAge != null) {
+                          if (_selectedAge! < 18) {
                             // Under 18, clear education level (not needed)
                             _selectedEducationLevel = null;
                           }
                           
                           // Auto-suggest grade based on age and school system
                           final systemCode = _selectedSchoolSystem ?? 'GENERAL';
-                          final suggestedGrade = GradeLevel.fromAge(value, systemCode);
+                          final suggestedGrade = GradeLevel.fromAge(_selectedAge!, systemCode);
                           if (suggestedGrade != null) {
                             _selectedGradeLevel = suggestedGrade.code;
                             _selectedChallengeGradeLevel = suggestedGrade.code;
@@ -186,58 +236,58 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
             
             // School System (only for high school students)
             if (_shouldShowGradeSelection) ...[
-              _buildCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'School System',
-                      style: TextStyle(color: Colors.white70, fontSize: 14),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: _selectedSchoolSystem,
-                      decoration: _inputDecoration(),
-                      dropdownColor: AppTheme.darkCard,
-                      style: const TextStyle(color: Colors.white),
-                      items: SchoolSystem.values.map((system) {
-                        return DropdownMenuItem(
-                          value: system.code,
-                          child: Text(system.displayName),
-                        );
-                      }).toList(),
-                      onChanged: (value) {
-                        setState(() {
-                          _selectedSchoolSystem = value;
-                          
-                          // Reset grade selections and auto-suggest based on age
-                          if (value != null && _selectedAge != null) {
-                            final suggestedGrade = GradeLevel.fromAge(_selectedAge!, value);
-                            if (suggestedGrade != null) {
-                              _selectedGradeLevel = suggestedGrade.code;
-                              _selectedChallengeGradeLevel = suggestedGrade.code;
-                            } else {
-                              // Default to first grade of the new system
-                              final grades = GradeLevel.getGradesForSystem(value);
-                              if (grades.isNotEmpty) {
-                                _selectedGradeLevel = grades.first.code;
-                                _selectedChallengeGradeLevel = grades.first.code;
-                              }
-                            }
-                          } else if (value != null) {
-                            // No age set, just use first grade
+            _buildCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'School System',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _selectedSchoolSystem,
+                    decoration: _inputDecoration(),
+                    dropdownColor: AppTheme.darkCard,
+                    style: const TextStyle(color: Colors.white),
+                    items: SchoolSystem.values.map((system) {
+                      return DropdownMenuItem(
+                        value: system.code,
+                        child: Text(system.displayName),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedSchoolSystem = value;
+                        
+                        // Reset grade selections and auto-suggest based on age
+                        if (value != null && _selectedAge != null) {
+                          final suggestedGrade = GradeLevel.fromAge(_selectedAge!, value);
+                          if (suggestedGrade != null) {
+                            _selectedGradeLevel = suggestedGrade.code;
+                            _selectedChallengeGradeLevel = suggestedGrade.code;
+                          } else {
+                            // Default to first grade of the new system
                             final grades = GradeLevel.getGradesForSystem(value);
                             if (grades.isNotEmpty) {
                               _selectedGradeLevel = grades.first.code;
                               _selectedChallengeGradeLevel = grades.first.code;
                             }
                           }
-                        });
-                      },
-                    ),
-                  ],
-                ),
+                        } else if (value != null) {
+                          // No age set, just use first grade
+                          final grades = GradeLevel.getGradesForSystem(value);
+                          if (grades.isNotEmpty) {
+                            _selectedGradeLevel = grades.first.code;
+                            _selectedChallengeGradeLevel = grades.first.code;
+                          }
+                        }
+                      });
+                    },
+                  ),
+                ],
               ),
+            ),
             ],
             
             const SizedBox(height: 24),
@@ -687,10 +737,10 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
     final userProvider = context.read<UserProvider>();
     
     // Validate required fields
-    if (_selectedAge == null) {
+    if (_selectedAgeRange == null || _selectedAge == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please select your age'),
+          content: Text('Please select your age range'),
           backgroundColor: Colors.red,
         ),
       );
@@ -731,10 +781,13 @@ class _EducationSettingsScreenState extends State<EducationSettingsScreen> {
 
     if (updatedUser != null) {
       userProvider.setUser(updatedUser);
+      await userProvider.saveUserData(); // Persist education settings
       
       // Track analytics
       // ignore: avoid_print
       print('📊 Analytics: education_settings_saved');
+      // ignore: avoid_print
+      print('   Age Range: $_selectedAgeRange (Age: $_selectedAge)');
       // ignore: avoid_print
       print('   Grade: $_selectedGradeLevel');
       // ignore: avoid_print

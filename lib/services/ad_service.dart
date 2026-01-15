@@ -337,8 +337,37 @@ class AdService {
     }
 
     bool rewardEarned = false;
+    final completer = Completer<bool>();
 
     try {
+      // Set up callbacks before showing
+      _roundCompleteRewardedInterstitialAd!.fullScreenContentCallback = FullScreenContentCallback(
+        onAdShowedFullScreenContent: (ad) {
+          // ignore: avoid_print
+          print('📺 Round Complete ad showing full screen');
+        },
+        onAdDismissedFullScreenContent: (ad) {
+          // ignore: avoid_print
+          print('📺 Round Complete ad dismissed');
+          ad.dispose();
+          _roundCompleteRewardedInterstitialAd = null;
+          loadRoundCompleteAd(); // Pre-load next ad
+          if (!completer.isCompleted) {
+            completer.complete(rewardEarned);
+          }
+        },
+        onAdFailedToShowFullScreenContent: (ad, error) {
+          // ignore: avoid_print
+          print('❌ Round Complete ad failed to show: ${error.code} - ${error.message}');
+          ad.dispose();
+          _roundCompleteRewardedInterstitialAd = null;
+          loadRoundCompleteAd();
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        },
+      );
+
       _roundCompleteRewardedInterstitialAd!.show(
         onUserEarnedReward: (ad, reward) {
           rewardEarned = true;
@@ -347,11 +376,14 @@ class AdService {
         },
       );
 
-      await Future.delayed(const Duration(seconds: 1));
-      return rewardEarned;
+      // Wait for ad to be dismissed (user watches it)
+      return await completer.future;
     } catch (e) {
       // ignore: avoid_print
       print('❌ Error showing Round Complete ad: $e');
+      if (!completer.isCompleted) {
+        completer.complete(false);
+      }
       return false;
     }
   }
