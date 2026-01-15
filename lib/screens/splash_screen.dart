@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../theme/app_theme.dart';
 import 'main_navigation.dart';
+import '../services/version_check_service.dart';
+import '../widgets/update_dialog.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -68,21 +70,60 @@ class _SplashScreenState extends State<SplashScreen>
     // Start animations
     _logoController.forward();
 
-    // Navigate to home after delay
-    Future.delayed(const Duration(milliseconds: 3000), () {
+    // Check for app updates and navigate
+    _checkForUpdatesAndNavigate();
+  }
+
+  void _checkForUpdatesAndNavigate() async {
+    // Wait for splash animation
+    await Future.delayed(const Duration(milliseconds: 3000));
+
+    if (!mounted) return;
+
+    // Check for updates
+    final versionService = VersionCheckService();
+    final isUpdateRequired = versionService.isUpdateRequired();
+    final isForceUpdate = versionService.isForceUpdateEnabled();
+
+    if (isUpdateRequired) {
+      // Show update dialog
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) =>
-                const MainNavigation(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 500),
+        showDialog(
+          context: context,
+          barrierDismissible: !isForceUpdate,
+          builder: (context) => UpdateDialog(
+            title: versionService.getUpdateTitle(),
+            message: versionService.getUpdateMessage(),
+            storeUrl: versionService.getStoreUrl(),
+            isForceUpdate: isForceUpdate,
           ),
         );
       }
-    });
+
+      // If not force update, still navigate (user can dismiss)
+      if (!isForceUpdate && mounted) {
+        _navigateToHome();
+      }
+      // If force update, don't navigate - user must update
+    } else {
+      // No update required, navigate normally
+      _navigateToHome();
+    }
+  }
+
+  void _navigateToHome() {
+    if (!mounted) return;
+    
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) =>
+            const MainNavigation(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
   }
 
   @override
@@ -153,23 +194,24 @@ class _SplashScreenState extends State<SplashScreen>
                           return Transform.scale(
                             scale: _pulseAnimation.value,
                             child: Container(
-                              width: 120,
-                              height: 120,
+                              width: 180,
+                              height: 180,
                               decoration: BoxDecoration(
-                                gradient: AppTheme.primaryGradient,
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppTheme.primaryNeon.withOpacity(0.5),
-                                    blurRadius: 40,
-                                    spreadRadius: 10,
+                                    color: AppTheme.primaryNeon.withOpacity(0.6),
+                                    blurRadius: 50,
+                                    spreadRadius: 15,
                                   ),
                                 ],
                               ),
-                              child: const Center(
-                                child: Text(
-                                  '🧠',
-                                  style: TextStyle(fontSize: 60),
+                              child: ClipOval(
+                                child: Image.asset(
+                                  'assets/images/mindrush_logo.png',
+                                  width: 180,
+                                  height: 180,
+                                  fit: BoxFit.cover,
                                 ),
                               ),
                             ),
@@ -194,7 +236,7 @@ class _SplashScreenState extends State<SplashScreen>
                               return AppTheme.primaryGradient.createShader(bounds);
                             },
                             child: const Text(
-                              'BrainRush',
+                              'MindRush',
                               style: TextStyle(
                                 fontSize: 48,
                                 fontWeight: FontWeight.bold,
@@ -205,7 +247,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                           const SizedBox(height: 8),
                           const Text(
-                            'Keep that brain fresh! 🚀',
+                            'The Thinking Game',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.white60,

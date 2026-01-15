@@ -6,8 +6,6 @@ class LeagueService {
   factory LeagueService() => _instance;
   LeagueService._internal();
 
-  final Random _random = Random();
-
   // Mock league data
   final List<League> _leagues = [
     League(
@@ -117,9 +115,63 @@ class LeagueService {
     return filtered;
   }
 
-  Future<League> getLeagueById(String id) async {
+  Future<League?> getLeagueById(String id) async {
     await Future.delayed(const Duration(milliseconds: 300));
+    try {
     return _leagues.firstWhere((l) => l.id == id);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<bool> updatePlayerScore(String leagueId, String userId, int score) async {
+    await Future.delayed(const Duration(milliseconds: 300));
+    
+    final leagueIndex = _leagues.indexWhere((l) => l.id == leagueId);
+    if (leagueIndex == -1) return false;
+
+    final league = _leagues[leagueIndex];
+    final participantIndex = league.participants.indexWhere((p) => p.userId == userId);
+    
+    if (participantIndex == -1) return false;
+
+    // Update participant's score
+    final updatedParticipants = List<LeagueParticipant>.from(league.participants);
+    updatedParticipants[participantIndex] = LeagueParticipant(
+      userId: userId,
+      username: updatedParticipants[participantIndex].username,
+      score: score,
+      rank: updatedParticipants[participantIndex].rank, // Will be recalculated below
+    );
+
+    // Sort by score and update ranks
+    updatedParticipants.sort((a, b) => b.score.compareTo(a.score));
+    for (int i = 0; i < updatedParticipants.length; i++) {
+      updatedParticipants[i] = LeagueParticipant(
+        userId: updatedParticipants[i].userId,
+        username: updatedParticipants[i].username,
+        score: updatedParticipants[i].score,
+        rank: i + 1,
+      );
+    }
+
+    // Update league
+    _leagues[leagueIndex] = League(
+      id: league.id,
+      name: league.name,
+      description: league.description,
+      topic: league.topic,
+      tier: league.tier,
+      entryFee: league.entryFee,
+      maxParticipants: league.maxParticipants,
+      participants: updatedParticipants,
+      startDate: league.startDate,
+      endDate: league.endDate,
+      isActive: league.isActive,
+      totalQuestions: league.totalQuestions,
+    );
+
+    return true;
   }
 
   Future<bool> joinLeague(String leagueId, String userId, String username) async {

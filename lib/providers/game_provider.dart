@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import '../models/question.dart';
 import '../services/question_bank.dart';
+import '../services/expanded_question_bank.dart';
 
 enum GameMode { practice, daily, league, multiplayer }
 
+/// Game Provider - Manages game state and question loading
 class GameProvider extends ChangeNotifier {
   final QuestionBank _questionBank = QuestionBank();
   
@@ -13,12 +15,18 @@ class GameProvider extends ChangeNotifier {
   int _correctAnswers = 0;
   GameMode _mode = GameMode.practice;
   String _category = 'Math';
+  bool _isLoading = false;
   
   // Getters
   List<Question> get questions => _questions;
   int get currentQuestionIndex => _currentQuestionIndex;
   int get score => _score;
   int get correctAnswers => _correctAnswers;
+  
+  /// Loading state indicator - true when questions are being loaded
+  bool get isLoading {
+    return _isLoading;
+  }
   Question? get currentQuestion => 
       _currentQuestionIndex < _questions.length 
           ? _questions[_currentQuestionIndex] 
@@ -27,37 +35,77 @@ class GameProvider extends ChangeNotifier {
   int get totalQuestions => _questions.length;
   GameMode get mode => _mode;
 
-  void startGame({
+  Future<void> startGame({
     required String category,
     required int questionCount,
     GameMode mode = GameMode.practice,
-  }) {
+  }) async {
     _category = category;
     _mode = mode;
-    _questions = _questionBank.getQuestions(
-      category: category,
-      count: questionCount,
-    );
-    _currentQuestionIndex = 0;
-    _score = 0;
-    _correctAnswers = 0;
+    _isLoading = true;
     notifyListeners();
+    
+    try {
+      if (mode == GameMode.daily) {
+        // Use ExpandedQuestionBank for daily challenge with day-based seed
+        _questions = await ExpandedQuestionBank.getDailyChallengeQuestions(count: questionCount);
+      } else {
+        // Use regular QuestionBank for other modes
+        _questions = _questionBank.getQuestions(
+          category: category,
+          count: questionCount,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading questions: $e');
+      // Fallback to regular question bank
+      _questions = _questionBank.getQuestions(
+        category: category,
+        count: questionCount,
+      );
+    } finally {
+      _isLoading = false;
+      _currentQuestionIndex = 0;
+      _score = 0;
+      _correctAnswers = 0;
+      notifyListeners();
+    }
   }
 
-  void startMixedGame({
+  Future<void> startMixedGame({
     required List<String> categories,
     required int questionCount,
     GameMode mode = GameMode.practice,
-  }) {
+  }) async {
     _mode = mode;
-    _questions = _questionBank.getMixedQuestions(
-      categories: categories,
-      count: questionCount,
-    );
-    _currentQuestionIndex = 0;
-    _score = 0;
-    _correctAnswers = 0;
+    _isLoading = true;
     notifyListeners();
+    
+    try {
+      if (mode == GameMode.daily) {
+        // Use ExpandedQuestionBank for daily challenge
+        _questions = await ExpandedQuestionBank.getDailyChallengeQuestions(count: questionCount);
+      } else {
+        // Use regular QuestionBank for other modes
+        _questions = _questionBank.getMixedQuestions(
+          categories: categories,
+          count: questionCount,
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading mixed questions: $e');
+      // Fallback to regular question bank
+      _questions = _questionBank.getMixedQuestions(
+        categories: categories,
+        count: questionCount,
+      );
+    } finally {
+      _isLoading = false;
+      _currentQuestionIndex = 0;
+      _score = 0;
+      _correctAnswers = 0;
+      notifyListeners();
+    }
   }
 
   bool answerQuestion(int selectedIndex, {int timeBonus = 0}) {

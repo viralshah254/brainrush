@@ -4,17 +4,20 @@ import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
 import '../theme/app_theme.dart';
 import '../services/room_service.dart';
+import '../services/league_service.dart';
 import '../services/ad_service.dart';
 import '../services/premium_service.dart';
 import '../widgets/ad_loading_dialog.dart';
 import 'results_screen.dart';
 import 'multiplayer/multiplayer_results_screen.dart';
+import 'leagues/league_results_screen.dart';
 
 class GameScreen extends StatefulWidget {
   final String category;
   final int questionCount;
   final GameMode mode;
   final String? roomCode;
+  final String? leagueId; // For league mode
 
   const GameScreen({
     super.key,
@@ -22,6 +25,7 @@ class GameScreen extends StatefulWidget {
     this.questionCount = 5,
     this.mode = GameMode.practice,
     this.roomCode,
+    this.leagueId,
   });
 
   @override
@@ -62,13 +66,15 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<GameProvider>().startGame(
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await context.read<GameProvider>().startGame(
             category: widget.category,
             questionCount: widget.questionCount,
             mode: widget.mode,
           );
-      _timerController.forward();
+      if (mounted) {
+        _timerController.forward();
+      }
     });
   }
 
@@ -160,68 +166,99 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     
     if (!mounted) return;
 
-    {
-      if (gameProvider.isGameOver) {
-        // Update user stats
-        context.read<UserProvider>().updateStats(
-              questionsAnswered: gameProvider.totalQuestions,
-              correctAnswers: gameProvider.correctAnswers,
-              score: gameProvider.score,
-            );
+    // Move to next question first to update the index
+    gameProvider.nextQuestion();
+    
+    // Now check if game is over (after incrementing)
+    if (gameProvider.isGameOver) {
+      // Update user stats
+      context.read<UserProvider>().updateStats(
+            questionsAnswered: gameProvider.totalQuestions,
+            correctAnswers: gameProvider.correctAnswers,
+            score: gameProvider.score,
+          );
 
-        // If multiplayer, update room score and show multiplayer results
-        if (widget.mode == GameMode.multiplayer && widget.roomCode != null) {
-          final room = await RoomService().getRoom(widget.roomCode!);
-          if (room != null) {
-            await RoomService().updatePlayerScore(
-              widget.roomCode!,
-              context.read<UserProvider>().user!.id,
-              gameProvider.score,
-            );
-            
-            final updatedRoom = await RoomService().getRoom(widget.roomCode!);
-            if (updatedRoom != null && mounted) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => MultiplayerResultsScreen(
-                    room: updatedRoom,
-                    myScore: gameProvider.score,
-                  ),
+      // If multiplayer, update room score and show multiplayer results
+      if (widget.mode == GameMode.multiplayer && widget.roomCode != null) {
+        final room = await RoomService().getRoom(widget.roomCode!);
+        if (room != null) {
+          await RoomService().updatePlayerScore(
+            widget.roomCode!,
+            context.read<UserProvider>().user!.id,
+            gameProvider.score,
+          );
+          
+          final updatedRoom = await RoomService().getRoom(widget.roomCode!);
+          if (updatedRoom != null && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => MultiplayerResultsScreen(
+                  room: updatedRoom,
+                  myScore: gameProvider.score,
                 ),
-              );
-              return;
-            }
+              ),
+            );
+            return;
           }
         }
-
-        // Navigate to regular results
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ResultsScreen(
-              score: gameProvider.score,
-              totalQuestions: gameProvider.totalQuestions,
-              correctAnswers: gameProvider.correctAnswers,
-              mode: widget.mode,
-              category: widget.category,
-            ),
-          ),
-        );
-      } else {
-        gameProvider.nextQuestion();
-        setState(() {
-          _selectedIndex = null;
-          _answered = false;
-          _isCorrect = false;
-          _timeRemaining = 15;
-          _extraTimeUsed = false; // Reset extra time for next question
-        });
-        // Reset and start timer for next question
-        _timerController.reset();
-        _timerController.forward();
       }
+
+      // If league, update league score and show league results
+      if (widget.mode == GameMode.league && widget.leagueId != null) {
+        final leagueService = LeagueService();
+        final user = context.read<UserProvider>().user;
+        if (user != null) {
+          // Update player score in league
+          await leagueService.updatePlayerScore(
+            widget.leagueId!,
+            user.id,
+            gameProvider.score,
+          );
+          
+          // Get updated league data
+          final league = await leagueService.getLeagueById(widget.leagueId!);
+          if (league != null && mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (_) => LeagueResultsScreen(
+                  league: league,
+                  myScore: gameProvider.score,
+                ),
+              ),
+            );
+            return;
+          }
+        }
+      }
+
+      // Navigate to regular results
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultsScreen(
+            score: gameProvider.score,
+            totalQuestions: gameProvider.totalQuestions,
+            correctAnswers: gameProvider.correctAnswers,
+            mode: widget.mode,
+            category: widget.category,
+          ),
+        ),
+      );
+    } else {
+      // Reset state for next question
+      setState(() {
+        _selectedIndex = null;
+        _answered = false;
+        _isCorrect = false;
+        _timeRemaining = 15;
+        _extraTimeUsed = false; // Reset extra time for next question
+      });
+      // Reset and start timer for next question
+      _timerController.reset();
+      _timerController.forward();
     }
   }
 
@@ -356,10 +393,35 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       backgroundColor: AppTheme.darkBg,
       body: Consumer<GameProvider>(
         builder: (context, gameProvider, _) {
-          final question = gameProvider.currentQuestion;
+          // Show loading while questions are being loaded (especially for daily challenge)
+          if (gameProvider.isLoading || gameProvider.currentQuestion == null) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    widget.mode == GameMode.daily 
+                        ? 'Loading today\'s challenge...' 
+                        : 'Loading questions...',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            );
+          }
           
+          final question = gameProvider.currentQuestion;
           if (question == null) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: Text(
+                'No question available',
+                style: TextStyle(color: Colors.white70),
+              ),
+            );
           }
 
           return SafeArea(

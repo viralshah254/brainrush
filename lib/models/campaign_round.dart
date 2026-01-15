@@ -57,6 +57,11 @@ enum RoundDifficulty {
         return 300;
     }
   }
+
+  int get entryCost {
+    // All rounds cost 50 coins to enter
+    return 50;
+  }
 }
 
 class CampaignRound {

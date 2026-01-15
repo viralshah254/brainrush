@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../services/room_service.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/out_of_coins_dialog.dart';
 import '../multiplayer/multiplayer_lobby_screen.dart';
 
 class PlayWithFriendsScreen extends StatefulWidget {
@@ -278,8 +279,19 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
   }
 
   Future<void> _createRoom() async {
-    final user = context.read<UserProvider>().user;
+    final userProvider = context.read<UserProvider>();
+    final user = userProvider.user;
     if (user == null) return;
+
+    // Check if user has enough coins (50 coins entry fee)
+    const entryCost = 50;
+    if (!userProvider.hasEnoughCoins(entryCost)) {
+      _showInsufficientCoinsDialog(entryCost);
+      return;
+    }
+
+    // Deduct entry fee
+    userProvider.spendCoins(entryCost);
 
     try {
       final room = await _roomService.createRoom(
@@ -300,6 +312,10 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
         ),
       );
     } catch (e) {
+      // Refund coins if room creation failed
+      userProvider.addCoins(entryCost);
+      
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error creating room: $e')),
       );
@@ -315,8 +331,19 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
       return;
     }
 
-    final user = context.read<UserProvider>().user;
+    final userProvider = context.read<UserProvider>();
+    final user = userProvider.user;
     if (user == null) return;
+
+    // Check if user has enough coins (50 coins entry fee)
+    const entryCost = 50;
+    if (!userProvider.hasEnoughCoins(entryCost)) {
+      _showInsufficientCoinsDialog(entryCost);
+      return;
+    }
+
+    // Deduct entry fee
+    userProvider.spendCoins(entryCost);
 
     try {
       final room = await _roomService.joinRoom(
@@ -326,6 +353,9 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
       );
 
       if (room == null) {
+        // Refund coins if room not found
+        userProvider.addCoins(entryCost);
+        
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Room not found or is full')),
@@ -343,10 +373,19 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
         ),
       );
     } catch (e) {
+      // Refund coins on error
+      userProvider.addCoins(entryCost);
+      
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error joining room: $e')),
       );
     }
+  }
+
+  void _showInsufficientCoinsDialog(int required) {
+    // Show the unified out of coins dialog
+    showOutOfCoinsDialog(context);
   }
 }
 

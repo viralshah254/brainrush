@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'providers/user_provider.dart';
 import 'providers/game_provider.dart';
 import 'providers/mode_provider.dart';
@@ -10,6 +12,11 @@ import 'services/ad_service.dart';
 import 'services/campaign_service.dart';
 import 'services/question_service.dart';
 import 'services/education_subscription_service.dart';
+import 'services/retention_service.dart';
+import 'services/fcm_service.dart';
+import 'services/local_notification_service.dart';
+import 'services/education_question_bank.dart';
+import 'services/version_check_service.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
 
@@ -21,6 +28,40 @@ void main() async {
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
+
+  // Initialize Firebase (REQUIRED)
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    // ignore: avoid_print
+    print('✅ Firebase initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('❌ CRITICAL: Firebase initialization failed: $e');
+    // Don't continue if Firebase fails - it's required for auth
+    rethrow;
+  }
+
+  // Initialize Firebase Cloud Messaging
+  try {
+    await FCMService().initialize();
+    // ignore: avoid_print
+    print('✅ FCM initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ FCM not available (iOS Simulator) - $e');
+  }
+
+  // Initialize Local Notifications
+  try {
+    await LocalNotificationService().initialize();
+    // ignore: avoid_print
+    print('✅ Local notifications initialized successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Local notifications error: $e');
+  }
 
   // Initialize Mobile Ads (with error handling)
   // Note: Ads won't work on iOS Simulator - use real device for testing
@@ -51,11 +92,37 @@ void main() async {
     print('⚠️ Education subscriptions not available (Simulator) - Education subscriptions disabled');
   }
 
-  runApp(const BrainzRushApp());
+  // Initialize Education Question Bank (pre-load questions)
+  try {
+    // ignore: avoid_print
+    print('📚 Pre-loading education questions...');
+    await EducationQuestionBank.initialize();
+    // ignore: avoid_print
+    print('✅ Education questions pre-loaded successfully');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Error pre-loading education questions: $e');
+    // Don't block app startup - questions will load on demand
+  }
+
+  // Initialize Version Check Service
+  try {
+    // ignore: avoid_print
+    print('🔍 Initializing version check service...');
+    await VersionCheckService().initialize();
+    // ignore: avoid_print
+    print('✅ Version check service initialized');
+  } catch (e) {
+    // ignore: avoid_print
+    print('⚠️ Version check service initialization error: $e');
+    // Don't block app startup - version check will use defaults
+  }
+
+  runApp(const MindRushApp());
 }
 
-class BrainzRushApp extends StatelessWidget {
-  const BrainzRushApp({super.key});
+class MindRushApp extends StatelessWidget {
+  const MindRushApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -85,9 +152,12 @@ class BrainzRushApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => CampaignService()..initialize(),
         ),
+        ChangeNotifierProvider(
+          create: (_) => RetentionService(),
+        ),
       ],
       child: MaterialApp(
-        title: 'Brainz Rush',
+        title: 'MindRush',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.darkTheme,
         home: const SplashScreen(),

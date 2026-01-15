@@ -54,6 +54,7 @@ class Room {
   final List<RoomPlayer> players;
   final bool isActive;
   final DateTime createdAt;
+  final int prizePot; // Total coins wagered (50 per player)
 
   const Room({
     required this.id,
@@ -65,6 +66,7 @@ class Room {
     required this.players,
     this.isActive = true,
     required this.createdAt,
+    this.prizePot = 0,
   });
 
   Room copyWith({
@@ -77,6 +79,7 @@ class Room {
     List<RoomPlayer>? players,
     bool? isActive,
     DateTime? createdAt,
+    int? prizePot,
   }) {
     return Room(
       id: id ?? this.id,
@@ -88,6 +91,7 @@ class Room {
       players: players ?? this.players,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
+      prizePot: prizePot ?? this.prizePot,
     );
   }
 
@@ -104,6 +108,7 @@ class Room {
           .toList(),
       isActive: json['isActive'] as bool? ?? true,
       createdAt: DateTime.parse(json['createdAt'] as String),
+      prizePot: json['prizePot'] as int? ?? 0,
     );
   }
 
@@ -118,6 +123,7 @@ class Room {
       'players': players.map((p) => p.toJson()).toList(),
       'isActive': isActive,
       'createdAt': createdAt.toIso8601String(),
+      'prizePot': prizePot,
     };
   }
 }

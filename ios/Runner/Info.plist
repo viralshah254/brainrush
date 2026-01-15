@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Brainz Rush</string>
+	<string>MindRush</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>brainrush</string>
+	<string>mindrush</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -45,9 +45,62 @@
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	
+	<!-- Contacts Permission -->
+	<key>NSContactsUsageDescription</key>
+	<string>We need access to your contacts to find friends who also play MindRush!</string>
+	
+	<!-- Firebase Cloud Messaging -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	
 	<!-- Google Mobile Ads App ID -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-4248679794653671~9985405800</string>
+	
+	<!-- Google Sign In URL Scheme -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- TODO: Replace with your REVERSED_CLIENT_ID from GoogleService-Info.plist -->
+				<string>com.googleusercontent.apps.YOUR-CLIENT-ID</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Facebook URL Scheme -->
+				<string>fbYOUR-FACEBOOK-APP-ID</string>
+			</array>
+		</dict>
+	</array>
+	
+	<!-- Facebook Configuration -->
+	<key>FacebookAppID</key>
+	<string>YOUR-FACEBOOK-APP-ID</string>
+	<key>FacebookClientToken</key>
+	<string>YOUR-FACEBOOK-CLIENT-TOKEN</string>
+	<key>FacebookDisplayName</key>
+	<string>MindRush</string>
+	
+	<!-- URL Schemes for Facebook -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>fbapi</string>
+		<string>fb-messenger-share-api</string>
+		<string>fbauth2</string>
+		<string>fbshareextension</string>
+	</array>
 	
 	<!-- SKAdNetwork IDs for ad attribution -->
 	<key>SKAdNetworkItems</key>

@@ -4,6 +4,7 @@ import '../../theme/app_theme.dart';
 import '../../services/league_service.dart';
 import '../../models/league.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/out_of_coins_dialog.dart';
 import '../game_screen.dart';
 import '../../providers/game_provider.dart';
 
@@ -144,11 +145,16 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
 
     // Check if user has enough coins
     if (user.coins < league.entryFee) {
+      // Show out of coins dialog if they have 0 coins
+      if (user.coins == 0) {
+        showOutOfCoinsDialog(context);
+      } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Not enough coins! Need ${league.entryFee}, have ${user.coins}'),
         ),
       );
+      }
       return;
     }
 
@@ -174,6 +180,7 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
               category: league.topic,
               questionCount: league.totalQuestions,
               mode: GameMode.league,
+              leagueId: league.id, // Pass league ID
             ),
           ),
         );
