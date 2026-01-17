@@ -49,61 +49,63 @@ class CoinStoreScreen extends StatelessWidget {
                 _buildAdRewardCard(context, userProvider),
                 const SizedBox(height: 32),
                 
-                // Purchase Coins Section
-                _buildSectionTitle('💰 Buy Coins'),
-                const SizedBox(height: 12),
-                _buildCoinPackage(
-                  context,
-                  coins: 500,
-                  price: '\$0.99',
-                  bonus: 'Starter Pack',
-                  gradient: LinearGradient(
-                    colors: [Colors.blue.shade700, Colors.blue.shade500],
+                // Purchase Coins Section (Hidden for now)
+                if (false) ...[
+                  _buildSectionTitle('💰 Buy Coins'),
+                  const SizedBox(height: 12),
+                  _buildCoinPackage(
+                    context,
+                    coins: 500,
+                    price: '\$0.99',
+                    bonus: 'Starter Pack',
+                    gradient: LinearGradient(
+                      colors: [Colors.blue.shade700, Colors.blue.shade500],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildCoinPackage(
-                  context,
-                  coins: 1200,
-                  price: '\$1.99',
-                  bonus: '+200 Bonus!',
-                  gradient: LinearGradient(
-                    colors: [Colors.purple.shade700, Colors.purple.shade500],
+                  const SizedBox(height: 12),
+                  _buildCoinPackage(
+                    context,
+                    coins: 1200,
+                    price: '\$1.99',
+                    bonus: '+200 Bonus!',
+                    gradient: LinearGradient(
+                      colors: [Colors.purple.shade700, Colors.purple.shade500],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildCoinPackage(
-                  context,
-                  coins: 3000,
-                  price: '\$3.99',
-                  bonus: '+500 Bonus!',
-                  popular: true,
-                  gradient: LinearGradient(
-                    colors: [Colors.orange.shade700, Colors.orange.shade500],
+                  const SizedBox(height: 12),
+                  _buildCoinPackage(
+                    context,
+                    coins: 3000,
+                    price: '\$3.99',
+                    bonus: '+500 Bonus!',
+                    popular: true,
+                    gradient: LinearGradient(
+                      colors: [Colors.orange.shade700, Colors.orange.shade500],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildCoinPackage(
-                  context,
-                  coins: 6500,
-                  price: '\$6.99',
-                  bonus: '+1500 Bonus!',
-                  gradient: LinearGradient(
-                    colors: [Colors.pink.shade700, Colors.pink.shade500],
+                  const SizedBox(height: 12),
+                  _buildCoinPackage(
+                    context,
+                    coins: 6500,
+                    price: '\$6.99',
+                    bonus: '+1500 Bonus!',
+                    gradient: LinearGradient(
+                      colors: [Colors.pink.shade700, Colors.pink.shade500],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                _buildCoinPackage(
-                  context,
-                  coins: 15000,
-                  price: '\$14.99',
-                  bonus: '+5000 Bonus!',
-                  bestValue: true,
-                  gradient: LinearGradient(
-                    colors: [Colors.amber.shade700, Colors.amber.shade500],
+                  const SizedBox(height: 12),
+                  _buildCoinPackage(
+                    context,
+                    coins: 15000,
+                    price: '\$14.99',
+                    bonus: '+5000 Bonus!',
+                    bestValue: true,
+                    gradient: LinearGradient(
+                      colors: [Colors.amber.shade700, Colors.amber.shade500],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 32),
+                  const SizedBox(height: 32),
+                ],
                 
                 // Info
                 _buildInfoCard(),
@@ -169,14 +171,7 @@ class CoinStoreScreen extends StatelessWidget {
   }
 
   Widget _buildAdRewardCard(BuildContext context, UserProvider userProvider) {
-    final user = userProvider.user;
-    final canWatchAd = user?.canClaimFreeCoins ?? true; // Use same logic as free coins (daily)
-    
-    // Hide card if already used today
-    if (!canWatchAd) {
-      return const SizedBox.shrink();
-    }
-    
+    // Always show the card - users can watch ads for coins anytime
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -464,10 +459,8 @@ class CoinStoreScreen extends StatelessWidget {
     Navigator.of(context).pop(); // Close loading dialog
     
     if (watched) {
-      // Award coins
+      // Award coins (no daily limit - users can watch ads anytime)
       userProvider.addCoins(50);
-      // Mark as claimed for today (same as free coins)
-      userProvider.claimFreeCoins();
       
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -94,6 +94,7 @@ class _SimpleAuthScreenState extends State<SimpleAuthScreen>
     setState(() => _isLoading = true);
     try {
       if (_isSignUp) {
+        // Sign up returns null for local auth (SharedPreferences)
         await _authService.signUpWithEmail(
           email: _emailController.text.trim(),
           password: _passwordController.text,
@@ -105,6 +106,7 @@ class _SimpleAuthScreenState extends State<SimpleAuthScreen>
           );
         }
       } else {
+        // Sign in returns null for local auth, UserCredential for Firebase
         await _authService.signInWithEmail(
           email: _emailController.text.trim(),
           password: _passwordController.text,

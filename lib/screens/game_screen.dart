@@ -66,15 +66,13 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       }
     });
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await context.read<GameProvider>().startGame(
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<GameProvider>().startGame(
             category: widget.category,
             questionCount: widget.questionCount,
             mode: widget.mode,
           );
-      if (mounted) {
-        _timerController.forward();
-      }
+      _timerController.forward();
     });
   }
 
@@ -393,35 +391,10 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       backgroundColor: AppTheme.darkBg,
       body: Consumer<GameProvider>(
         builder: (context, gameProvider, _) {
-          // Show loading while questions are being loaded (especially for daily challenge)
-          if (gameProvider.isLoading || gameProvider.currentQuestion == null) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(AppTheme.primaryNeon),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    widget.mode == GameMode.daily 
-                        ? 'Loading today\'s challenge...' 
-                        : 'Loading questions...',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            );
-          }
-          
           final question = gameProvider.currentQuestion;
+          
           if (question == null) {
-            return const Center(
-              child: Text(
-                'No question available',
-                style: TextStyle(color: Colors.white70),
-              ),
-            );
+            return const Center(child: CircularProgressIndicator());
           }
 
           return SafeArea(

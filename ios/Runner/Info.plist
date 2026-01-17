@@ -102,6 +102,12 @@
 		<string>fbshareextension</string>
 	</array>
 	
+	<!-- App Encryption Declaration -->
+	<!-- Set to false because app only uses standard encryption (HTTPS/TLS) provided by iOS -->
+	<!-- This exempts the app from encryption export documentation requirements -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	
 	<!-- SKAdNetwork IDs for ad attribution -->
 	<key>SKAdNetworkItems</key>
 	<array>

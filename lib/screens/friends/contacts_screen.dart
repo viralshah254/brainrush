@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:permission_handler/permission_handler.dart';
 import '../../theme/app_theme.dart';
 import '../../services/contacts_service.dart';
 import 'play_with_friends_screen.dart';
@@ -36,7 +37,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     // Check permission
     final hasPermission = await _contactsService.hasPermission();
+    // ignore: avoid_print
+    print('📱 Contacts permission status: $hasPermission');
+    
     if (!hasPermission) {
+      // ignore: avoid_print
+      print('❌ Contacts permission NOT granted');
       setState(() {
         _hasPermission = false;
         _isLoading = false;
@@ -44,6 +50,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return;
     }
 
+    // ignore: avoid_print
+    print('✅ Contacts permission GRANTED');
+    
     setState(() {
       _hasPermission = true;
     });
@@ -51,29 +60,191 @@ class _ContactsScreenState extends State<ContactsScreen> {
     // Simulate finding contacts with app (for demo)
     // In production, this would be a backend API call
     await _contactsService.simulateFindContactsWithApp();
-    final updatedContacts = await _contactsService.getContactsWithAppStatus();
+    final allContacts = await _contactsService.getContactsWithAppStatus();
+    
+    // Filter to show ONLY contacts who have the game
+    final contactsWithGame = allContacts.where((contact) => contact.hasApp).toList();
+    
+    // ignore: avoid_print
+    print('📱 Total contacts: ${allContacts.length}');
+    // ignore: avoid_print
+    print('📱 Contacts with game: ${contactsWithGame.length}');
+    // ignore: avoid_print
+    print('📱 Showing only contacts who have the game');
 
     if (mounted) {
       setState(() {
-        _contacts = updatedContacts;
+        _contacts = contactsWithGame; // Only show contacts with app
         _isLoading = false;
       });
     }
   }
 
   Future<void> _requestPermission() async {
-    final granted = await _contactsService.requestPermission();
-    if (granted) {
+    if (!mounted) return;
+    
+    // Show loading indicator
+    setState(() {
+      _isLoading = true;
+    });
+
+    // Check current permission status first
+    final currentStatus = await _contactsService.getPermissionStatus();
+    
+    if (currentStatus == PermissionStatus.granted) {
+      // Already granted - just load contacts
       await _loadContacts();
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Contacts permission is required to find friends'),
-            backgroundColor: Colors.orange,
+      return;
+    }
+    
+    if (currentStatus == PermissionStatus.permanentlyDenied) {
+      // Permanently denied - need to open settings
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+      });
+      
+      final shouldOpenSettings = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.darkCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-        );
+          title: const Text(
+            'Permission Required',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Contacts permission was denied. To find friends who play MindRush, please enable contacts access in your device settings.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Would you like to open settings now?',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.white60),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNeon,
+                foregroundColor: AppTheme.darkBg,
+              ),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldOpenSettings == true) {
+        final opened = await _contactsService.openSettings();
+        if (opened && mounted) {
+          // Wait a bit for user to return from settings, then check permission again
+          await Future.delayed(const Duration(seconds: 1));
+          await _loadContacts();
+        }
       }
+      return;
+    }
+
+    // Not granted and not permanently denied - request permission
+    // This will show the system permission dialog
+    final granted = await _contactsService.requestPermission();
+    
+    if (!mounted) return;
+    
+    if (granted) {
+      // Permission granted - load contacts
+      await _loadContacts();
+      return;
+    }
+
+    // Permission denied (but not permanently) - show dialog to encourage retry
+    setState(() {
+      _isLoading = false;
+      _hasPermission = false;
+    });
+    
+    if (mounted) {
+      // Show a more prominent dialog instead of just a snackbar
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          backgroundColor: AppTheme.darkCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Colors.orange,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Permission Required',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: const Text(
+            'To find friends who play MindRush, we need access to your contacts. This allows you to:\n\n'
+            '• See which contacts are playing\n'
+            '• Challenge friends to games\n'
+            '• Compete with your network\n\n'
+            'Your contacts are never shared or stored on our servers.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text(
+                'Maybe Later',
+                style: TextStyle(color: Colors.white60),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _requestPermission();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNeon,
+                foregroundColor: AppTheme.darkBg,
+              ),
+              child: const Text('Grant Permission'),
+            ),
+          ],
+        ),
+      );
     }
   }
 
@@ -151,11 +322,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Only show back button if we can pop (i.e., navigated via push, not from bottom nav)
+    final canPop = Navigator.canPop(context);
+    
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
         title: const Text('Find Friends'),
         backgroundColor: AppTheme.darkBg,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -207,61 +388,141 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildPermissionRequest() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.contacts_outlined,
-              size: 80,
-              color: Colors.white60,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Access Contacts',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'We need access to your contacts to find friends who also play MindRush!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.white70,
-              ),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _requestPermission,
-              icon: const Icon(Icons.contacts),
-              label: const Text('Grant Permission'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryNeon,
-                foregroundColor: AppTheme.darkBg,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 16,
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Animated icon
+              Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryNeon.withOpacity(0.2),
+                      AppTheme.primaryNeon.withOpacity(0.1),
+                    ],
+                  ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                child: const Icon(
+                  Icons.contacts,
+                  size: 60,
+                  color: AppTheme.primaryNeon,
                 ),
               ),
-            ),
-          ],
+              const SizedBox(height: 32),
+              const Text(
+                'Access Contacts',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: AppTheme.darkCard,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: AppTheme.primaryNeon.withOpacity(0.3),
+                    width: 2,
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    _buildBenefitRow(
+                      Icons.people,
+                      'Find friends who play MindRush',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildBenefitRow(
+                      Icons.play_arrow,
+                      'Challenge friends to games',
+                    ),
+                    const SizedBox(height: 12),
+                    _buildBenefitRow(
+                      Icons.emoji_events,
+                      'Compete and see who\'s the best',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _requestPermission,
+                  icon: const Icon(Icons.contacts, size: 24),
+                  label: const Text(
+                    'Grant Permission',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryNeon,
+                    foregroundColor: AppTheme.darkBg,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 18,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Your contacts are only used to find friends.\nWe never share your data.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildBenefitRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          color: AppTheme.primaryNeon,
+          size: 20,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildContactsList() {
-    final filtered = _filteredContacts;
-    final contactsWithApp = filtered.where((c) => c.hasApp).toList();
-    final contactsWithoutApp = filtered.where((c) => !c.hasApp).toList();
+    // Filter to show ONLY contacts who have the game
+    final filtered = _filteredContacts.where((c) => c.hasApp).toList();
+    
+    // ignore: avoid_print
+    print('📱 Displaying ${filtered.length} contacts (all have the game)');
 
     if (filtered.isEmpty) {
       return Center(
@@ -286,11 +547,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       );
     }
 
-    return ListView(
+      return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       children: [
-        // Contacts with app section
-        if (contactsWithApp.isNotEmpty) ...[
+        // Header showing only contacts with game
+        if (filtered.isNotEmpty) ...[
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: Row(
@@ -320,7 +581,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${contactsWithApp.length}',
+                  '${filtered.length}',
                   style: const TextStyle(
                     color: Colors.white60,
                     fontSize: 14,
@@ -329,53 +590,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ],
             ),
           ),
-          ...contactsWithApp.map((contactWithStatus) =>
+          ...filtered.map((contactWithStatus) =>
               _buildContactCard(contactWithStatus, hasApp: true)),
-          const SizedBox(height: 24),
-        ],
-
-        // Contacts without app section
-        if (contactsWithoutApp.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.person_add, color: Colors.orange, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        'Invite to Play',
-                        style: TextStyle(
-                          color: Colors.orange,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${contactsWithoutApp.length}',
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ...contactsWithoutApp.map((contactWithStatus) =>
-              _buildContactCard(contactWithStatus, hasApp: false)),
         ],
       ],
     );

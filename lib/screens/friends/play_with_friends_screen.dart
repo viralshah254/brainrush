@@ -4,10 +4,18 @@ import '../../theme/app_theme.dart';
 import '../../services/room_service.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/out_of_coins_dialog.dart';
+import '../../models/room.dart';
 import '../multiplayer/multiplayer_lobby_screen.dart';
 
 class PlayWithFriendsScreen extends StatefulWidget {
-  const PlayWithFriendsScreen({super.key});
+  final String? gradeLevel; // For education mode grade filtering
+  final bool isEducationMode; // Whether this is education mode
+
+  const PlayWithFriendsScreen({
+    super.key,
+    this.gradeLevel,
+    this.isEducationMode = false,
+  });
 
   @override
   State<PlayWithFriendsScreen> createState() => _PlayWithFriendsScreenState();
@@ -20,7 +28,7 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
   
   String _selectedTopic = 'Math';
   int _maxPlayers = 3;
-  int _totalQuestions = 5;
+  GameDifficulty _selectedDifficulty = GameDifficulty.medium;
 
   @override
   void initState() {
@@ -148,9 +156,9 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
           ),
           const SizedBox(height: 24),
 
-          // Questions Count
+          // Difficulty Selection
           const Text(
-            'Number of Questions',
+            'Difficulty',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -158,26 +166,44 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [5, 10, 15, 20].map((count) {
-              final isSelected = _totalQuestions == count;
-              return Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    label: Center(child: Text('$count')),
-                    selected: isSelected,
-                    onSelected: (_) => setState(() => _totalQuestions = count),
-                    backgroundColor: AppTheme.darkCard,
-                    selectedColor: AppTheme.primaryNeon,
-                    labelStyle: TextStyle(
-                      color: isSelected ? AppTheme.darkBg : Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: GameDifficulty.values.map((difficulty) {
+              final isSelected = _selectedDifficulty == difficulty;
+              return ChoiceChip(
+                label: Text(difficulty.displayName),
+                selected: isSelected,
+                onSelected: (_) => setState(() => _selectedDifficulty = difficulty),
+                backgroundColor: AppTheme.darkCard,
+                selectedColor: AppTheme.primaryNeon,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppTheme.darkBg : Colors.white,
+                  fontWeight: FontWeight.bold,
                 ),
               );
             }).toList(),
+          ),
+          const SizedBox(height: 24),
+          
+          // Game Info (3 rounds, 10 questions each)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.darkCard,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primaryNeon.withOpacity(0.3)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildInfoItem('🎯', '3', 'Rounds'),
+                Container(width: 1, height: 40, color: Colors.white10),
+                _buildInfoItem('❓', '10', 'Questions/Round'),
+                Container(width: 1, height: 40, color: Colors.white10),
+                _buildInfoItem('📊', '30', 'Total'),
+              ],
+            ),
           ),
           const SizedBox(height: 40),
 
@@ -294,12 +320,18 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
     userProvider.spendCoins(entryCost);
 
     try {
+      // Calculate total questions: 3 rounds × 10 questions = 30
+      final totalQuestions = 3 * 10;
+      
       final room = await _roomService.createRoom(
         hostId: user.id,
         hostUsername: user.username,
         topic: _selectedTopic,
         maxPlayers: _maxPlayers,
-        totalQuestions: _totalQuestions,
+        totalQuestions: totalQuestions,
+        rounds: 3,
+        questionsPerRound: 10,
+        difficulty: _selectedDifficulty,
       );
 
       if (!mounted) return;
@@ -381,6 +413,30 @@ class _PlayWithFriendsScreenState extends State<PlayWithFriendsScreen> with Sing
         SnackBar(content: Text('Error joining room: $e')),
       );
     }
+  }
+
+  Widget _buildInfoItem(String emoji, String value, String label) {
+    return Column(
+      children: [
+        Text(emoji, style: const TextStyle(fontSize: 24)),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.primaryNeon,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 12,
+            color: Colors.white60,
+          ),
+        ),
+      ],
+    );
   }
 
   void _showInsufficientCoinsDialog(int required) {

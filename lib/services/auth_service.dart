@@ -3,6 +3,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 
 /// Comprehensive authentication service supporting multiple providers
@@ -17,8 +18,85 @@ class AuthService {
   /// Get current user
   User? get currentUser => _auth.currentUser;
 
-  /// Check if user is signed in
-  bool get isSignedIn => currentUser != null;
+  /// Check if user is signed in (including demo user and local users)
+  bool get isSignedIn {
+    // Check Firebase first
+    if (currentUser != null) return true;
+    
+    // Note: For demo and local users, we check asynchronously in the screens
+    // This getter is synchronous, so it only checks Firebase
+    return false;
+  }
+  
+  /// Check if local user is authenticated (SharedPreferences)
+  Future<bool> isLocalUserAuthenticated() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('local_user_authenticated') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /// Get local user email (SharedPreferences)
+  Future<String?> getLocalUserEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('local_user_email');
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /// Get local user name (SharedPreferences)
+  Future<String?> getLocalUserName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('local_user_name');
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /// Get local user ID (SharedPreferences)
+  Future<String?> getLocalUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('local_user_id');
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /// Check if demo user is authenticated (frontend-only, no Firebase)
+  Future<bool> isDemoUserAuthenticated() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool('demo_user_authenticated') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /// Get demo user email (frontend-only)
+  Future<String?> getDemoUserEmail() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('demo_user_email');
+    } catch (e) {
+      return null;
+    }
+  }
+  
+  /// Get demo user name (frontend-only)
+  Future<String?> getDemoUserName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('demo_user_name');
+    } catch (e) {
+      return null;
+    }
+  }
 
   /// Get auth state stream
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -128,8 +206,59 @@ class AuthService {
 
   // ===== EMAIL/PASSWORD SIGN IN =====
   
+  /// Ensure demo account exists (create if it doesn't)
+  Future<void> ensureDemoAccount() async {
+    const demoEmail = 'demo@mindrushgame.com';
+    const demoPassword = 'Demo@123';
+    const demoName = 'Demo User';
+    
+    try {
+      // Try to sign in first (to check if account exists)
+      try {
+        await _auth.signInWithEmailAndPassword(
+          email: demoEmail,
+          password: demoPassword,
+        );
+        debugPrint('✅ Demo account already exists');
+        // Sign out after checking
+        await _auth.signOut();
+      } catch (e) {
+        // If sign in fails, try to create the account
+        if (e is FirebaseAuthException && 
+            (e.code == 'user-not-found' || e.code == 'wrong-password')) {
+          debugPrint('📧 Creating demo account...');
+          try {
+            final userCredential = await _auth.createUserWithEmailAndPassword(
+              email: demoEmail,
+              password: demoPassword,
+            );
+            
+            // Update display name
+            await userCredential.user?.updateDisplayName(demoName);
+            debugPrint('✅ Demo account created successfully');
+            
+            // Sign out after creating (user will sign in manually)
+            await _auth.signOut();
+          } catch (createError) {
+            if (createError is FirebaseAuthException && 
+                createError.code == 'email-already-in-use') {
+              debugPrint('✅ Demo account already exists (email-already-in-use)');
+            } else {
+              debugPrint('❌ Error creating demo account: $createError');
+            }
+          }
+        } else {
+          debugPrint('❌ Error checking demo account: $e');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error ensuring demo account: $e');
+    }
+  }
+  
   /// Sign up with email and password
-  Future<UserCredential> signUpWithEmail({
+  /// Saves user info to SharedPreferences (frontend-only for now)
+  Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
     required String displayName,
@@ -137,16 +266,39 @@ class AuthService {
     try {
       debugPrint('📧 Creating account for: $email');
       
-      final userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      // Update display name
-      await userCredential.user?.updateDisplayName(displayName);
+      final prefs = await SharedPreferences.getInstance();
       
-      debugPrint('✅ Email sign up successful');
-      return userCredential;
+      // Check if user already exists
+      final existingUsers = prefs.getStringList('registered_users') ?? [];
+      if (existingUsers.contains(email.toLowerCase())) {
+        throw Exception('An account with this email already exists');
+      }
+      
+      // Generate user ID
+      final userId = 'user_${DateTime.now().millisecondsSinceEpoch}';
+      
+      // Save user info to SharedPreferences
+      await prefs.setString('user_${email.toLowerCase()}_email', email);
+      await prefs.setString('user_${email.toLowerCase()}_password', password); // In production, hash this
+      await prefs.setString('user_${email.toLowerCase()}_name', displayName);
+      await prefs.setString('user_${email.toLowerCase()}_id', userId);
+      await prefs.setString('user_${email.toLowerCase()}_createdAt', DateTime.now().toIso8601String());
+      
+      // Add to registered users list
+      existingUsers.add(email.toLowerCase());
+      await prefs.setStringList('registered_users', existingUsers);
+      
+      // Set as authenticated user
+      await prefs.setBool('local_user_authenticated', true);
+      await prefs.setString('local_user_email', email);
+      await prefs.setString('local_user_name', displayName);
+      await prefs.setString('local_user_id', userId);
+      
+      debugPrint('✅ Email sign up successful (saved to SharedPreferences)');
+      debugPrint('✅ User ID: $userId');
+      
+      // Return null since we're not using Firebase, but the signup screen will handle it
+      return null;
     } catch (e) {
       debugPrint('❌ Email sign up error: $e');
       rethrow;
@@ -154,20 +306,69 @@ class AuthService {
   }
 
   /// Sign in with email and password
-  Future<UserCredential> signInWithEmail({
+  /// Checks SharedPreferences first, then Firebase (for backward compatibility)
+  Future<UserCredential?> signInWithEmail({
     required String email,
     required String password,
   }) async {
     try {
       debugPrint('📧 Signing in with email: $email');
       
-      final userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      // Check if this is the demo account - bypass Firebase
+      if (email.toLowerCase() == 'demo@mindrushgame.com' && password == 'Demo@123') {
+        debugPrint('🎮 Demo account detected - using frontend-only authentication');
+        
+        // Create a mock user credential for demo (frontend-only)
+        // We'll use a local flag instead of Firebase
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('demo_user_authenticated', true);
+        await prefs.setString('demo_user_email', email);
+        await prefs.setString('demo_user_name', 'Demo User');
+        
+        debugPrint('✅ Demo login successful (frontend-only)');
+        
+        // Return null since we're not using Firebase, but the login screen will handle it
+        return null;
+      }
       
-      debugPrint('✅ Email sign in successful');
-      return userCredential;
+      // Check SharedPreferences for locally registered users
+      final prefs = await SharedPreferences.getInstance();
+      final emailKey = email.toLowerCase();
+      
+      // Check if user exists in local storage
+      final savedPassword = prefs.getString('user_${emailKey}_password');
+      if (savedPassword != null) {
+        // User exists in local storage
+        if (savedPassword == password) {
+          // Password matches - authenticate locally
+          final savedName = prefs.getString('user_${emailKey}_name') ?? 'User';
+          final savedUserId = prefs.getString('user_${emailKey}_id') ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
+          
+          await prefs.setBool('local_user_authenticated', true);
+          await prefs.setString('local_user_email', email);
+          await prefs.setString('local_user_name', savedName);
+          await prefs.setString('local_user_id', savedUserId);
+          
+          debugPrint('✅ Email sign in successful (from SharedPreferences)');
+          return null; // Return null for local auth
+        } else {
+          throw Exception('Incorrect password');
+        }
+      }
+      
+      // If not found in local storage, try Firebase (for backward compatibility)
+      try {
+        final userCredential = await _auth.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
+        
+        debugPrint('✅ Email sign in successful (from Firebase)');
+        return userCredential;
+      } catch (firebaseError) {
+        // If Firebase also fails, throw the original error
+        throw Exception('No account found with this email');
+      }
     } catch (e) {
       debugPrint('❌ Email sign in error: $e');
       rethrow;
@@ -189,10 +390,24 @@ class AuthService {
 
   // ===== SIGN OUT =====
   
-  /// Sign out from all providers
+  /// Sign out from all providers (including demo user)
   Future<void> signOut() async {
     try {
       debugPrint('🚪 Signing out...');
+      
+      // Clear demo user authentication
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('demo_user_authenticated');
+      await prefs.remove('demo_user_email');
+      await prefs.remove('demo_user_name');
+      debugPrint('✅ Demo user signed out');
+      
+      // Clear local user authentication
+      await prefs.remove('local_user_authenticated');
+      await prefs.remove('local_user_email');
+      await prefs.remove('local_user_name');
+      await prefs.remove('local_user_id');
+      debugPrint('✅ Local user signed out');
       
       // Sign out from Google if signed in
       if (await _googleSignIn.isSignedIn()) {

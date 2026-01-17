@@ -23,15 +23,133 @@ class ContactsService {
   List<String> _contactsWithApp = [];
 
   /// Request contacts permission
+  /// Returns: true if granted, false if denied
   Future<bool> requestPermission() async {
-    final status = await Permission.contacts.request();
-    return status.isGranted;
+    try {
+      // Use FlutterContacts.requestPermission() which is the recommended way
+      // This properly handles iOS and Android permission requests
+      final granted = await FlutterContacts.requestPermission();
+      
+      // ignore: avoid_print
+      print('📱 FlutterContacts.requestPermission() result: $granted');
+      
+      // Trust FlutterContacts result - it's what we use to actually load contacts
+      if (granted) {
+        // ignore: avoid_print
+        print('✅ Contacts permission GRANTED (FlutterContacts)');
+        
+        // Check permission_handler status for reference (may differ)
+        final status = await Permission.contacts.status;
+        // ignore: avoid_print
+        print('📱 Permission handler status: $status');
+        
+        // Return true if FlutterContacts says granted (primary source)
+        return true;
+      }
+      
+      // If FlutterContacts says not granted, check if permanently denied
+      final status = await Permission.contacts.status;
+      // ignore: avoid_print
+      print('📱 Permission status after denial: $status');
+      // ignore: avoid_print
+      print('❌ Contacts permission NOT granted');
+      
+      return false;
+    } catch (e, stackTrace) {
+      // ignore: avoid_print
+      print('❌ Error requesting contacts permission: $e');
+      // ignore: avoid_print
+      print('❌ Stack trace: $stackTrace');
+      
+      // Fallback: Try using permission_handler directly
+      try {
+        // ignore: avoid_print
+        print('🔄 Trying fallback permission request...');
+        final status = await Permission.contacts.request();
+        // ignore: avoid_print
+        print('🔄 Fallback permission status: $status');
+        return status.isGranted;
+      } catch (fallbackError) {
+        // ignore: avoid_print
+        print('❌ Fallback permission request also failed: $fallbackError');
+        return false;
+      }
+    }
   }
 
   /// Check if contacts permission is granted
   Future<bool> hasPermission() async {
-    final status = await Permission.contacts.status;
-    return status.isGranted;
+    try {
+      // Try a lightweight check with FlutterContacts (most reliable)
+      // Request permission - if already granted, it returns true immediately
+      final granted = await FlutterContacts.requestPermission();
+      
+      if (granted) {
+        // ignore: avoid_print
+        print('✅ Contacts permission GRANTED (FlutterContacts)');
+        return true;
+      }
+      
+      // Also check permission_handler for reference
+      final status = await Permission.contacts.status;
+      // ignore: avoid_print
+      print('📱 Permission.contacts.status: $status');
+      
+      // If permission_handler says granted, trust it
+      if (status.isGranted) {
+        // ignore: avoid_print
+        print('✅ Contacts permission GRANTED (permission_handler)');
+        return true;
+      }
+      
+      // ignore: avoid_print
+      print('❌ Contacts permission NOT granted');
+      return false;
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Error checking contacts permission: $e');
+      // Fallback to permission_handler
+      try {
+        final status = await Permission.contacts.status;
+        return status.isGranted;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
+  /// Check if permission is permanently denied (requires opening settings)
+  Future<bool> isPermanentlyDenied() async {
+    try {
+      final status = await Permission.contacts.status;
+      return status.isPermanentlyDenied;
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Error checking if permission is permanently denied: $e');
+      return false;
+    }
+  }
+
+  /// Get current permission status
+  Future<PermissionStatus> getPermissionStatus() async {
+    try {
+      return await Permission.contacts.status;
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Error getting permission status: $e');
+      return PermissionStatus.denied;
+    }
+  }
+
+  /// Open app settings so user can grant permission manually
+  Future<bool> openSettings() async {
+    try {
+      return await openAppSettings();
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Error opening app settings: $e');
+      return false;
+    }
   }
 
   /// Load contacts from device

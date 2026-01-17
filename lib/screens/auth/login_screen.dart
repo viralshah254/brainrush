@@ -39,6 +39,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
     _animationController.forward();
+    
+    // Ensure demo account exists
+    _authService.ensureDemoAccount();
+  }
+  
+  Future<void> _handleDemoLogin() async {
+    // Auto-fill demo credentials
+    _emailController.text = 'demo@mindrushgame.com';
+    _passwordController.text = 'Demo@123';
+    setState(() => _agreedToTerms = true);
+    
+    // Automatically sign in
+    await _handleEmailSignIn();
   }
 
   @override
@@ -121,11 +134,20 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
     setState(() => _isLoading = true);
     try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      
+      // Sign in (handles demo, local users, and Firebase)
+      // signInWithEmail returns null for local auth (demo or SharedPreferences users)
+      // For Firebase users, it returns UserCredential
+      // In both cases, we navigate to age collection
       await _authService.signInWithEmail(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        email: email,
+        password: password,
       );
+      
       if (mounted) {
+        debugPrint('✅ Login successful - navigating to app');
         _navigateToAgeCollection();
       }
     } catch (e) {
@@ -411,6 +433,23 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                               fontWeight: FontWeight.bold,
                             ),
                           ),
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+
+                // Demo Login Button
+                OutlinedButton.icon(
+                  onPressed: _isLoading ? null : _handleDemoLogin,
+                  icon: const Icon(Icons.play_arrow, size: 20),
+                  label: const Text('Quick Demo Login'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryNeon,
+                    side: BorderSide(color: AppTheme.primaryNeon.withOpacity(0.5)),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
                 

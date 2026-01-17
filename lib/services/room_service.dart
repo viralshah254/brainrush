@@ -20,6 +20,11 @@ class RoomService {
     required String topic,
     required int maxPlayers,
     required int totalQuestions,
+    int rounds = 3,
+    int questionsPerRound = 10,
+    GameDifficulty difficulty = GameDifficulty.medium,
+    String? gradeLevel,
+    bool isEducationMode = false,
   }) async {
     await Future.delayed(const Duration(milliseconds: 300));
 
@@ -31,6 +36,11 @@ class RoomService {
       topic: topic,
       maxPlayers: maxPlayers,
       totalQuestions: totalQuestions,
+      rounds: rounds,
+      questionsPerRound: questionsPerRound,
+      difficulty: difficulty,
+      gradeLevel: gradeLevel,
+      isEducationMode: isEducationMode,
       players: [
         RoomPlayer(
           userId: hostId,
@@ -151,6 +161,11 @@ class RoomService {
   bool areAllPlayersReady(Room room) {
     if (room.players.length < 2) return false;
     return room.players.every((p) => p.isReady);
+  }
+
+  /// Check if host can start the game (at least 1 player, including host)
+  bool canStartGame(Room room) {
+    return room.players.isNotEmpty; // Can start with just the host
   }
 }
 

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../providers/user_provider.dart';
 import '../providers/mode_provider.dart';
 import '../theme/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import '../models/app_mode.dart';
 import '../models/daily_login_reward.dart';
 import '../services/education_subscription_service.dart';
@@ -13,7 +15,11 @@ import 'game_screen.dart';
 import 'campaign/campaign_screen.dart';
 import 'education/education_settings_screen.dart';
 import 'coin_store_screen.dart';
+import 'friends/play_with_friends_screen.dart';
+import 'leagues/leagues_screen.dart';
 import '../providers/game_provider.dart';
+import '../services/education_question_bank.dart';
+import '../services/expanded_question_bank.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,6 +48,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkDailyLoginReward();
       _initializeSmartNotifications();
+      _preloadQuestionsInBackground();
+    });
+  }
+  
+  /// Preload questions in background after app starts
+  void _preloadQuestionsInBackground() {
+    // Start loading questions in background (non-blocking)
+    // This ensures questions are ready when user navigates to game screens
+    Future.microtask(() async {
+      try {
+        // Load both question banks in parallel
+        await Future.wait([
+          EducationQuestionBank.initialize(),
+          ExpandedQuestionBank.initialize(),
+        ]);
+        debugPrint('✅ Questions preloaded in background');
+      } catch (e) {
+        debugPrint('⚠️ Error preloading questions: $e');
+        // Questions will load on-demand if this fails
+      }
     });
   }
   
@@ -155,7 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
             const SizedBox(width: 12),
-            const Text('MindRush'),
+            Text(AppLocalizations.of(context)?.appName ?? 'MindRush'),
           ],
         ),
         backgroundColor: AppTheme.darkBg,
@@ -184,31 +210,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Consumer<ModeProvider>(
-            builder: (context, modeProvider, _) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildHeader(context),
-                  const SizedBox(height: 16),
-                  _buildModeToggle(context),
-                  const SizedBox(height: 16),
-                  
-                  // Retention features (daily quests, lucky spin, free coins)
-                  const RetentionFeaturesCards(),
-                  const SizedBox(height: 12),
-                  
-                  // Content changes based on mode
-                  if (modeProvider.isEducationMode)
-                    ..._buildEducationModeCards(context)
-                  else
-                    ..._buildGeneralModeCards(context),
-                ],
-              );
-            },
-          ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final screenHeight = constraints.maxHeight;
+            final isSmallScreen = screenHeight < 800; // iPhone 16 and similar
+            
+            return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: isSmallScreen ? 8 : 16,
+              ),
+              child: Consumer<ModeProvider>(
+                builder: (context, modeProvider, _) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _buildHeader(context),
+                      SizedBox(height: isSmallScreen ? 12 : 16),
+                      _buildModeToggle(context),
+                      SizedBox(height: isSmallScreen ? 12 : 16),
+                      
+                      // Retention features (daily quests, lucky spin, free coins)
+                      const RetentionFeaturesCards(),
+                      SizedBox(height: isSmallScreen ? 8 : 12),
+                      
+                      // Content changes based on mode
+                      if (modeProvider.isEducationMode)
+                        ..._buildEducationModeCards(context, isSmallScreen: isSmallScreen)
+                      else
+                        ..._buildGeneralModeCards(context, isSmallScreen: isSmallScreen),
+                      
+                      // Extra bottom padding for navigation bar
+                      SizedBox(height: isSmallScreen ? 8 : 16),
+                    ],
+                  );
+                },
+              ),
+            );
+          },
         ),
       ),
     );
@@ -365,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Expanded(
                 child: _buildModeButton(
                   context,
-                  'General',
+                  AppLocalizations.of(context)?.general ?? 'General',
                   Icons.psychology,
                   modeProvider.currentMode == AppMode.general,
                   () => modeProvider.switchMode(AppMode.general),
@@ -374,7 +415,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Expanded(
                 child: _buildModeButton(
                   context,
-                  'Education',
+                  AppLocalizations.of(context)?.education ?? 'Education',
                   Icons.school,
                   modeProvider.currentMode == AppMode.education,
                   () => _handleEducationModeSwitch(context, modeProvider),
@@ -761,7 +802,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildDailyChallengeCard(BuildContext context) {
+  Widget _buildDailyChallengeCard(BuildContext context, {bool isSmallScreen = false}) {
     // Check if daily challenge is completed
     final userProvider = context.watch<UserProvider>();
     final user = userProvider.user;
@@ -853,7 +894,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               );
             },
             child: Container(
-              height: 160,
+              height: isSmallScreen ? 120 : 150,
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
                   colors: [AppTheme.warningNeon, AppTheme.secondaryNeon],
@@ -869,34 +910,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                 ],
               ),
-              padding: const EdgeInsets.all(24),
+              padding: EdgeInsets.all(isSmallScreen ? 14 : 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
                     children: [
-                      const Text(
+                      Text(
                         '⚡',
-                        style: TextStyle(fontSize: 32),
+                        style: TextStyle(fontSize: isSmallScreen ? 24 : 28),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: isSmallScreen ? 8 : 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Daily Challenge',
                               style: TextStyle(
-                                fontSize: 24,
+                                fontSize: isSmallScreen ? 18 : 22,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
                               '10 questions • ⏱️ 15s each • Double points!',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: isSmallScreen ? 12 : 13,
                                 color: Colors.white.withOpacity(0.9),
                               ),
                             ),
@@ -907,22 +949,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   ),
                   if (!isCompleted)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 12 : 16,
+                        vertical: isSmallScreen ? 6 : 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
+                      child: Text(
                         'Start Now →',
                         style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: isSmallScreen ? 13 : 15,
                         ),
                       ),
                     )
                   else
-                    const Icon(Icons.check_circle, color: Colors.white, size: 32),
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.white,
+                      size: isSmallScreen ? 24 : 28,
+                    ),
                 ],
               ),
             ),
@@ -932,41 +981,58 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  List<Widget> _buildGeneralModeCards(BuildContext context) {
+  List<Widget> _buildGeneralModeCards(BuildContext context, {bool isSmallScreen = false}) {
+    final spacing = isSmallScreen ? 8.0 : 12.0;
     return [
-      _buildDailyChallengeCard(context),
-      const SizedBox(height: 12),
+      _buildDailyChallengeCard(context, isSmallScreen: isSmallScreen),
+      SizedBox(height: spacing),
       _buildAnimatedCampaignCard(context),
-      const SizedBox(height: 12),
+      SizedBox(height: spacing),
       _buildModeCard(
         context,
-        title: 'Practice Mode',
-        subtitle: 'Unlimited play • Learn at your pace',
+        title: AppLocalizations.of(context)?.practiceMode ?? 'Practice Mode',
+        subtitle: AppLocalizations.of(context)?.play ?? 'Unlimited play • Learn at your pace',
         emoji: '📚',
         color: AppTheme.primaryNeon,
         onTap: () => _showCategoryDialog(context),
       ),
-      const SizedBox(height: 12),
-      _buildLockedModeCard(
+      SizedBox(height: spacing),
+      _buildModeCard(
         context,
-        title: 'Play With Friends',
-        subtitle: '2-5 players • Just for fun',
+        title: AppLocalizations.of(context)?.playWithFriends ?? 'Play With Friends',
+        subtitle: AppLocalizations.of(context)?.play ?? '2-5 players • Just for fun',
         emoji: '👥',
         color: Colors.green,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const PlayWithFriendsScreen(),
+            ),
+          );
+        },
       ),
-      const SizedBox(height: 12),
-      _buildLockedModeCard(
+      SizedBox(height: spacing),
+      _buildModeCard(
         context,
-        title: 'Global League',
-        subtitle: 'Ranked • 10 rounds • Worldwide',
+        title: AppLocalizations.of(context)?.leagues ?? 'Global League',
+        subtitle: AppLocalizations.of(context)?.global ?? 'Ranked • 10 rounds • Worldwide',
         emoji: '🏆',
         color: Colors.amber,
+        onTap: () {
+          // Navigate to Leagues screen
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const LeaguesScreen(),
+            ),
+          );
+        },
       ),
-      const SizedBox(height: 12),
     ];
   }
 
-  List<Widget> _buildEducationModeCards(BuildContext context) {
+  List<Widget> _buildEducationModeCards(BuildContext context, {bool isSmallScreen = false}) {
     final userProvider = context.watch<UserProvider>();
     final user = userProvider.user;
     final subscriptionService = context.watch<EducationSubscriptionService>();
@@ -983,29 +1049,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     final age = user?.age ?? 0;
     final isBeyondHighSchool = age >= 19;
     
+    final spacing = isSmallScreen ? 8.0 : 12.0;
     List<Widget> cards = [];
     
     // Daily Challenge - Education Version
-    cards.add(_buildDailyEducationCard(context, gradeDisplay));
-    cards.add(const SizedBox(height: 12));
+    cards.add(_buildDailyEducationCard(context, gradeDisplay, isSmallScreen: isSmallScreen));
+    cards.add(SizedBox(height: spacing));
     
     // Education Campaign (only for high school age)
     if (!isBeyondHighSchool && user?.gradeLevel != null) {
       cards.add(_buildEducationCampaignCard(context, user!.gradeLevel!));
-      cards.add(const SizedBox(height: 12));
+      cards.add(SizedBox(height: spacing));
     }
     
     // Subject Practice (only for high school age)
     if (!isBeyondHighSchool) {
       cards.add(_buildModeCard(
         context,
-        title: 'Subject Practice',
-        subtitle: 'Practice by subject • $gradeDisplay level',
+        title: AppLocalizations.of(context)?.practiceMode ?? 'Subject Practice',
+        subtitle: '${AppLocalizations.of(context)?.practiceMode ?? 'Practice by subject'} • $gradeDisplay ${AppLocalizations.of(context)?.level ?? 'level'}',
         emoji: '📝',
         color: AppTheme.primaryNeon,
         onTap: () => _showEducationSubjectDialog(context),
       ));
-      cards.add(const SizedBox(height: 12));
+      cards.add(SizedBox(height: spacing));
     }
     
     // SAT Prep (if user has SAT)
@@ -1018,7 +1085,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: Colors.blue,
         onTap: () => _showEducationSubjectDialog(context, isSat: true),
       ));
-      cards.add(const SizedBox(height: 12));
+      cards.add(SizedBox(height: spacing));
     }
     
     // GMAT Prep (if user has GMAT)
@@ -1031,27 +1098,49 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         color: Colors.orange,
         onTap: () => _showEducationSubjectDialog(context, isGmat: true),
       ));
-      cards.add(const SizedBox(height: 12));
+      cards.add(SizedBox(height: spacing));
     }
     
-    // Study With Friends - Education Version (LOCKED)
-    cards.add(_buildLockedModeCard(
-      context,
-      title: 'Study With Friends',
-      subtitle: 'Test each other • Choose subjects together',
+    // Study With Friends - Education Version (UNLOCKED)
+      cards.add(_buildModeCard(
+        context,
+        title: AppLocalizations.of(context)?.studyWithFriends ?? 'Study With Friends',
+        subtitle: AppLocalizations.of(context)?.play ?? 'Test each other • Choose subjects together',
       emoji: '👥',
       color: Colors.green,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PlayWithFriendsScreen(
+              gradeLevel: user?.gradeLevel,
+              isEducationMode: true,
+            ),
+          ),
+        );
+      },
     ));
-    cards.add(const SizedBox(height: 12));
+    cards.add(SizedBox(height: spacing));
     
-    // Grade League (LOCKED)
+    // Grade League (UNLOCKED)
     if (!isBeyondHighSchool) {
-      cards.add(_buildLockedModeCard(
+      cards.add(_buildModeCard(
         context,
-        title: 'Grade League',
-        subtitle: 'Compete with $gradeDisplay students',
+        title: AppLocalizations.of(context)?.gradeLeague ?? 'Grade League',
+        subtitle: '${AppLocalizations.of(context)?.play ?? 'Compete'} with $gradeDisplay ${AppLocalizations.of(context)?.players ?? 'students'}',
         emoji: '🏆',
         color: Colors.amber,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => LeaguesScreen(
+                gradeLevel: user?.gradeLevel,
+                isEducationMode: true,
+              ),
+            ),
+          );
+        },
       ));
     }
     
@@ -1166,7 +1255,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Widget _buildDailyEducationCard(BuildContext context, String gradeLevel) {
+  Widget _buildDailyEducationCard(BuildContext context, String gradeLevel, {bool isSmallScreen = false}) {
     final isCompleted = false; // TODO: Check actual completion
 
     return GestureDetector(
@@ -1183,7 +1272,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         );
       },
       child: Container(
-        height: 160,
+        height: isSmallScreen ? 120 : 150,
         decoration: BoxDecoration(
           gradient: isCompleted
               ? LinearGradient(
@@ -1205,38 +1294,39 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               top: -20,
               child: Icon(
                 Icons.school,
-                size: 140,
+                size: isSmallScreen ? 100 : 120,
                 color: Colors.white.withOpacity(0.1),
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: EdgeInsets.all(isSmallScreen ? 14 : 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
-                      const Text(
+                      Text(
                         '📚',
-                        style: TextStyle(fontSize: 32),
+                        style: TextStyle(fontSize: isSmallScreen ? 24 : 28),
                       ),
-                      const SizedBox(width: 12),
+                      SizedBox(width: isSmallScreen ? 8 : 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               isCompleted ? 'Daily Challenge Complete!' : 'Daily Class Challenge',
-                              style: const TextStyle(
-                                fontSize: 20,
+                              style: TextStyle(
+                                fontSize: isSmallScreen ? 16 : 18,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             Text(
                               '$gradeLevel • 10 questions',
-                              style: const TextStyle(
-                                fontSize: 14,
+                              style: TextStyle(
+                                fontSize: isSmallScreen ? 12 : 13,
                                 color: Colors.white70,
                               ),
                             ),
@@ -1248,21 +1338,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   const Spacer(),
                   if (!isCompleted)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: isSmallScreen ? 12 : 14,
+                        vertical: isSmallScreen ? 6 : 8,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.play_arrow, color: Color(0xFF6366F1), size: 20),
-                          SizedBox(width: 4),
+                          Icon(
+                            Icons.play_arrow,
+                            color: const Color(0xFF6366F1),
+                            size: isSmallScreen ? 16 : 18,
+                          ),
+                          SizedBox(width: isSmallScreen ? 3 : 4),
                           Text(
                             'Start Challenge',
                             style: TextStyle(
-                              color: Color(0xFF6366F1),
+                              color: const Color(0xFF6366F1),
                               fontWeight: FontWeight.bold,
+                              fontSize: isSmallScreen ? 12 : 14,
                             ),
                           ),
                         ],

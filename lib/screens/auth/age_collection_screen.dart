@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../theme/app_theme.dart';
 import '../../providers/user_provider.dart';
-import '../home_screen.dart';
+import '../main_navigation.dart';
 
 class AgeCollectionScreen extends StatefulWidget {
   const AgeCollectionScreen({super.key});
@@ -53,13 +53,18 @@ class _AgeCollectionScreenState extends State<AgeCollectionScreen> with SingleTi
     
     // Save age to user provider
     final userProvider = context.read<UserProvider>();
-    // Here you would normally save to a database
-    // For now, we'll just set it in the local user object
+    if (userProvider.user != null) {
+      // Update user with selected age
+      final updatedUser = userProvider.user!.copyWith(age: _selectedAge);
+      userProvider.setUser(updatedUser);
+      // Save to SharedPreferences
+      await userProvider.saveUserData();
+    }
     
-    // Navigate to home screen
+    // Navigate to main navigation (which contains home screen)
     if (mounted) {
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const MainNavigation()),
       );
     }
   }

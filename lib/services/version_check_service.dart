@@ -62,22 +62,69 @@ class VersionCheckService {
   }
 
   /// Check if update is required
-  bool isUpdateRequired() {
+  Future<bool> isUpdateRequired() async {
     try {
+      // Re-fetch remote config to get latest version requirements
+      try {
+        await _remoteConfig?.fetchAndActivate();
+      } catch (e) {
+        debugPrint('⚠️ Remote config fetch failed: $e');
+      }
+
       final current = _parseVersion(currentVersion);
       final required = _parseVersion(minimumRequiredVersion);
       
-      debugPrint('🔍 Version check: Current=$current, Required=$required');
+      debugPrint('🔍 Version check: Current=$currentVersion, Required=$minimumRequiredVersion');
+      debugPrint('🔍 Parsed: Current=$current, Required=$required');
       
-      return _compareVersions(current, required) < 0;
+      final needsUpdate = _compareVersions(current, required) < 0;
+      if (needsUpdate) {
+        debugPrint('✅ Update required: $currentVersion < $minimumRequiredVersion');
+      } else {
+        debugPrint('✅ No update needed: $currentVersion >= $minimumRequiredVersion');
+      }
+      
+      return needsUpdate;
     } catch (e) {
       debugPrint('⚠️ Error checking version: $e');
       return false; // Don't block app if version check fails
     }
   }
 
+  /// Check if update is required (synchronous - uses cached remote config)
+  /// Use this for quick checks, but prefer isUpdateRequired() for accurate results
+  bool isUpdateRequiredSync() {
+    try {
+      final current = _parseVersion(currentVersion);
+      final required = _parseVersion(minimumRequiredVersion);
+      
+      debugPrint('🔍 Version check (sync): Current=$current, Required=$required');
+      
+      return _compareVersions(current, required) < 0;
+    } catch (e) {
+      debugPrint('⚠️ Error checking version: $e');
+      return false;
+    }
+  }
+
   /// Check if force update is enabled
-  bool isForceUpdateEnabled() {
+  Future<bool> isForceUpdateEnabled() async {
+    try {
+      // Re-fetch remote config to get latest settings
+      try {
+        await _remoteConfig?.fetchAndActivate();
+      } catch (e) {
+        debugPrint('⚠️ Remote config fetch failed: $e');
+      }
+      
+      return _remoteConfig?.getBool('force_update_enabled') ?? false;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// Check if force update is enabled (synchronous - uses cached remote config)
+  bool isForceUpdateEnabledSync() {
     try {
       return _remoteConfig?.getBool('force_update_enabled') ?? false;
     } catch (e) {
@@ -107,10 +154,12 @@ class VersionCheckService {
   /// Get store URL based on platform
   String getStoreUrl() {
     if (Platform.isIOS) {
-      // Replace with your actual App Store ID
+      // TODO: Replace with your actual App Store ID once app is published
+      // You can find this in App Store Connect after publishing
+      // Format: https://apps.apple.com/app/id[YOUR_APP_ID]
       return 'https://apps.apple.com/app/idYOUR_APP_ID';
     } else if (Platform.isAndroid) {
-      // Replace with your actual package name
+      // Android package name (update if different)
       return 'https://play.google.com/store/apps/details?id=com.dvtechventures.mindrush';
     }
     return '';

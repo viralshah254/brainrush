@@ -37,6 +37,11 @@ class UserProvider extends ChangeNotifier {
       // Load coins
       final coins = prefs.getInt('user_coins') ?? 100;
       
+      // Load level/XP
+      final level = prefs.getInt('user_level') ?? 1;
+      final xp = prefs.getInt('user_xp') ?? 0;
+      final totalXpEarned = prefs.getInt('user_total_xp_earned') ?? 0;
+      
       // Load consecutive login days
       final consecutiveDays = prefs.getInt('consecutive_login_days') ?? 1;
       
@@ -92,6 +97,9 @@ class UserProvider extends ChangeNotifier {
       // Update user with loaded data
       _user = _user!.copyWith(
         coins: coins,
+        level: level,
+        xp: xp,
+        totalXpEarned: totalXpEarned,
         consecutiveLoginDays: consecutiveDays,
         hasClaimedDailyLoginReward: hasClaimedToday,
         lastLoginDate: lastLoginDate,
@@ -120,6 +128,11 @@ class UserProvider extends ChangeNotifier {
       
       // Save coins
       await prefs.setInt('user_coins', _user!.coins);
+      
+      // Save level/XP
+      await prefs.setInt('user_level', _user!.level);
+      await prefs.setInt('user_xp', _user!.xp);
+      await prefs.setInt('user_total_xp_earned', _user!.totalXpEarned);
       
       // Save consecutive login days
       await prefs.setInt('consecutive_login_days', _user!.consecutiveLoginDays);
@@ -225,6 +238,34 @@ class UserProvider extends ChangeNotifier {
 
     _user = _user!.copyWith(stats: newStats);
     notifyListeners();
+  }
+
+  /// Add XP and handle level ups
+  /// Returns the new level if leveled up, null otherwise
+  int? addXP(int amount) {
+    if (_user == null) return null;
+
+    int newXP = _user!.xp + amount;
+    int newLevel = _user!.level;
+    int newTotalXpEarned = _user!.totalXpEarned + amount;
+    int? levelUp = null;
+
+    // Check for level ups
+    while (newXP >= newLevel * 100) {
+      newXP -= newLevel * 100;
+      newLevel++;
+      levelUp = newLevel;
+    }
+
+    _user = _user!.copyWith(
+      xp: newXP,
+      level: newLevel,
+      totalXpEarned: newTotalXpEarned,
+    );
+    saveUserData();
+    notifyListeners();
+
+    return levelUp;
   }
 
   void incrementStreak() {

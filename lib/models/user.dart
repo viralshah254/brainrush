@@ -53,6 +53,11 @@ class User {
   final bool isGuest;
   final DateTime lastDailyChallenge;
   
+  // Level/XP System
+  final int level;
+  final int xp;
+  final int totalXpEarned;
+  
   // Retention fields
   final int consecutiveLoginDays;
   final DateTime lastLoginDate;
@@ -82,6 +87,10 @@ class User {
     this.stats = const UserStats(),
     this.isGuest = true,
     DateTime? lastDailyChallenge,
+    // Level/XP
+    this.level = 1,
+    this.xp = 0,
+    this.totalXpEarned = 0,
     // Retention fields
     this.consecutiveLoginDays = 1,
     DateTime? lastLoginDate,
@@ -116,6 +125,9 @@ class User {
     DateTime? lastFreeCoinsClaimDate,
     bool? hasClaimedDailyLoginReward,
     DateTime? lastLuckySpinDate,
+    int? level,
+    int? xp,
+    int? totalXpEarned,
     int? age,
     String? country,
     String? schoolSystem,
@@ -140,6 +152,9 @@ class User {
       lastFreeCoinsClaimDate: lastFreeCoinsClaimDate ?? this.lastFreeCoinsClaimDate,
       hasClaimedDailyLoginReward: hasClaimedDailyLoginReward ?? this.hasClaimedDailyLoginReward,
       lastLuckySpinDate: lastLuckySpinDate ?? this.lastLuckySpinDate,
+      level: level ?? this.level,
+      xp: xp ?? this.xp,
+      totalXpEarned: totalXpEarned ?? this.totalXpEarned,
       age: age ?? this.age,
       country: country ?? this.country,
       schoolSystem: schoolSystem ?? this.schoolSystem,
@@ -167,6 +182,9 @@ class User {
       'lastFreeCoinsClaimDate': lastFreeCoinsClaimDate?.toIso8601String(),
       'hasClaimedDailyLoginReward': hasClaimedDailyLoginReward,
       'lastLuckySpinDate': lastLuckySpinDate?.toIso8601String(),
+      'level': level,
+      'xp': xp,
+      'totalXpEarned': totalXpEarned,
       'age': age,
       'country': country,
       'schoolSystem': schoolSystem,
@@ -204,6 +222,9 @@ class User {
       lastLuckySpinDate: json['lastLuckySpinDate'] != null
           ? DateTime.parse(json['lastLuckySpinDate'] as String)
           : null,
+      level: json['level'] as int? ?? 1,
+      xp: json['xp'] as int? ?? 0,
+      totalXpEarned: json['totalXpEarned'] as int? ?? 0,
       age: json['age'] as int?,
       country: json['country'] as String? ?? 'Kenya',
       schoolSystem: json['schoolSystem'] as String?,
@@ -225,7 +246,29 @@ class User {
       lastDailyChallenge: DateTime.now().subtract(const Duration(days: 1)),
       lastLoginDate: DateTime.now(),
       consecutiveLoginDays: 1,
+      level: 1,
+      xp: 0,
+      totalXpEarned: 0,
     );
+  }
+  
+  // Calculate XP needed for next level
+  int get xpForNextLevel {
+    // Formula: level * 100 (e.g., level 2 needs 200 XP, level 3 needs 300 XP)
+    return level * 100;
+  }
+  
+  // Calculate XP needed for current level
+  int get xpForCurrentLevel {
+    if (level == 1) return 0;
+    return (level - 1) * 100;
+  }
+  
+  // Get progress to next level (0.0 to 1.0)
+  double get levelProgress {
+    final xpNeeded = xpForNextLevel - xpForCurrentLevel;
+    final xpInLevel = xp - xpForCurrentLevel;
+    return (xpInLevel / xpNeeded).clamp(0.0, 1.0);
   }
   
   // Check if user can claim free coins (once per day)

@@ -8,6 +8,7 @@ import '../../models/campaign_round.dart';
 import '../../models/app_mode.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/out_of_coins_dialog.dart';
+import '../../l10n/app_localizations.dart';
 import 'campaign_game_screen.dart';
 
 class CampaignScreen extends StatefulWidget {
@@ -235,9 +236,9 @@ class _CampaignScreenState extends State<CampaignScreen>
       pinned: true,
       backgroundColor: AppTheme.darkBg,
       flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          '🎮 Campaign Mode',
-          style: TextStyle(
+        title: Text(
+          '🎮 ${AppLocalizations.of(context)?.campaignMode ?? 'Campaign Mode'}',
+          style: const TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
           ),
@@ -267,7 +268,7 @@ class _CampaignScreenState extends State<CampaignScreen>
             Expanded(
               child: _buildStatCard(
                 '${service.currentRound}/500',
-                'Current Round',
+                AppLocalizations.of(context)?.currentRound ?? 'Current Round',
                 Icons.flag,
                 AppTheme.primaryNeon,
               ),
@@ -276,7 +277,7 @@ class _CampaignScreenState extends State<CampaignScreen>
             Expanded(
               child: _buildStatCard(
                 '${service.totalStars}',
-                'Total Stars',
+                AppLocalizations.of(context)?.totalStars ?? 'Total Stars',
                 Icons.star,
                 Colors.amber,
               ),
@@ -285,7 +286,7 @@ class _CampaignScreenState extends State<CampaignScreen>
             Expanded(
               child: _buildStatCard(
                 '${service.completedRounds}',
-                'Completed',
+                AppLocalizations.of(context)?.completed ?? 'Completed',
                 Icons.check_circle,
                 Colors.green,
               ),
@@ -600,8 +601,8 @@ class _CampaignScreenState extends State<CampaignScreen>
                       color: AppTheme.primaryNeon,
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: const Text(
-                      'NEXT',
+                    child: Text(
+                      AppLocalizations.of(context)?.next ?? 'NEXT',
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
@@ -690,9 +691,9 @@ class _CampaignScreenState extends State<CampaignScreen>
           children: [
             Icon(Icons.lock, color: Colors.white60),
             const SizedBox(width: 12),
-            const Text(
-              'Locked',
-              style: TextStyle(color: Colors.white),
+            Text(
+              AppLocalizations.of(context)?.locked ?? 'Locked',
+              style: const TextStyle(color: Colors.white),
             ),
           ],
         ),

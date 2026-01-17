@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/question.dart';
-import '../models/app_mode.dart';
 
 /// Education Question Bank
 /// Supports questions organized by:
@@ -174,8 +173,9 @@ class EducationQuestionBank {
       // Match mode (should be EDUCATION_SCHOOL)
       final modeMatch = q.mode == 'EDUCATION_SCHOOL' || q.mode == null;
       
-      // Match difficulty if specified
-      final difficultyMatch = difficulty == null || q.difficulty == difficulty;
+      // Match difficulty if specified (case-insensitive, trimmed)
+      final difficultyMatch = difficulty == null || 
+          q.difficulty.toLowerCase().trim() == difficulty.toLowerCase().trim();
       
       return gradeMatch && subjectMatch && modeMatch && difficultyMatch;
     }).toList();

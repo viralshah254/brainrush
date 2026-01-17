@@ -43,13 +43,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
     setState(() => _isLoading = true);
     try {
+      // signUpWithEmail saves to SharedPreferences and returns null for local auth
       await _authService.signUpWithEmail(
         email: _emailController.text.trim(),
         password: _passwordController.text,
         displayName: _nameController.text.trim(),
       );
       
+      // Navigate to age collection screen
       if (mounted) {
+        debugPrint('✅ Sign up successful - navigating to age collection');
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const AgeCollectionScreen()),
         );

@@ -76,16 +76,42 @@ class _LuckySpinScreenState extends State<LuckySpinScreen>
       _winAmount = null;
     });
 
-    // Get win amount from retention service
+    // Get win amount from retention service (this determines probability)
     final retentionService = context.read<RetentionService>();
-    _winAmount = retentionService.spinLuckyWheel();
+    final targetCoinAmount = retentionService.spinLuckyWheel();
+
+    // Find all segments that match the target coin amount
+    final matchingSegments = <int>[];
+    for (int i = 0; i < _segments.length; i++) {
+      if (_segments[i].coins == targetCoinAmount) {
+        matchingSegments.add(i);
+      }
+    }
+
+    // Randomly select one of the matching segments
+    final random = math.Random();
+    final targetSegmentIndex = matchingSegments[random.nextInt(matchingSegments.length)];
+    
+    // Get the actual win amount from the selected segment (this ensures correct payout)
+    _winAmount = _segments[targetSegmentIndex].coins;
 
     // Calculate target rotation (multiple full spins + landing position)
-    final targetSegmentIndex = _segments.indexWhere((s) => s.coins == _winAmount);
+    // The wheel is drawn with segments starting at -90° (top)
+    // The pointer is at the top, so we need the target segment's center to align with the pointer
     final segmentAngle = (2 * math.pi) / _segments.length;
-    final targetAngle = (segmentAngle * targetSegmentIndex) + (segmentAngle / 2);
     
-    // Add multiple full rotations for excitement
+    // Calculate the angle of the target segment's center
+    // Segment 0 starts at -90° (-π/2), so its center is at -90° + segmentAngle/2
+    // Segment N's center is at: -90° + (N * segmentAngle) + (segmentAngle / 2)
+    final segmentCenterAngle = (targetSegmentIndex * segmentAngle) - (math.pi / 2) + (segmentAngle / 2);
+    
+    // To bring this segment center to the top (where pointer is), we need to rotate
+    // the wheel so the segment center moves from its current position to 0° (top)
+    // Since rotation is clockwise (positive), we rotate by: 0 - segmentCenterAngle
+    // But we want positive rotation, so: 2π - segmentCenterAngle (or -segmentCenterAngle wrapped)
+    final targetAngle = (2 * math.pi) - segmentCenterAngle;
+    
+    // Add multiple full rotations for excitement (5 full spins)
     final fullRotations = 5;
     final totalRotation = (fullRotations * 2 * math.pi) + targetAngle;
 

@@ -5,6 +5,7 @@ import '../services/retention_service.dart';
 import '../providers/user_provider.dart';
 import '../models/daily_quest.dart';
 import '../providers/game_provider.dart';
+import '../l10n/app_localizations.dart';
 import 'campaign/campaign_screen.dart';
 import 'game_screen.dart';
 
@@ -19,7 +20,7 @@ class DailyQuestsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('🎯 Daily Quests'),
+        title: Text('🎯 ${AppLocalizations.of(context)?.dailyQuests ?? 'Daily Quests'}'),
         backgroundColor: AppTheme.darkBg,
       ),
       body: SafeArea(
@@ -47,9 +48,9 @@ class DailyQuestsScreen extends StatelessWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Daily Missions',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context)?.dailyMissions ?? 'Daily Missions',
+                        style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -57,7 +58,7 @@ class DailyQuestsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Complete quests to earn coins!',
+                        AppLocalizations.of(context)?.completeQuestsToEarnCoins ?? 'Complete quests to earn coins!',
                         style: TextStyle(
                           fontSize: 14,
                           color: Colors.white.withOpacity(0.7),
@@ -340,7 +341,7 @@ class _QuestCard extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      'Progress',
+                      AppLocalizations.of(context)?.progress ?? 'Progress',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.white.withOpacity(0.6),

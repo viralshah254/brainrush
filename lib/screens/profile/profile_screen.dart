@@ -7,12 +7,82 @@ import '../../services/auth_service.dart';
 import '../premium_screen.dart';
 import '../auth/simple_auth_screen.dart';
 import '../notification_settings_screen.dart';
+import '../achievements_screen.dart';
+import '../leaderboard/leaderboard_screen.dart';
+import '../cards/card_collection_screen.dart';
+import '../help_support_screen.dart';
+import '../about_screen.dart';
+import '../language_selection_screen.dart';
+import '../../widgets/invite_friends_dialog.dart';
+import '../../services/locale_service.dart';
+import '../../l10n/app_localizations.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
   @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserver {
+  bool _isDemoUser = false;
+  String? _demoUserEmail;
+  String? _demoUserName;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkDemoAuth();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkDemoAuth();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check demo auth whenever the screen is displayed
+    _checkDemoAuth();
+  }
+
+  Future<void> _checkDemoAuth() async {
+    final authService = AuthService();
+    final isDemo = await authService.isDemoUserAuthenticated();
+    final email = await authService.getDemoUserEmail();
+    final name = await authService.getDemoUserName();
+    
+    // Also check for local users (SharedPreferences)
+    final isLocal = await authService.isLocalUserAuthenticated();
+    final localEmail = await authService.getLocalUserEmail();
+    final localName = await authService.getLocalUserName();
+    
+    if (mounted) {
+      setState(() {
+        _isDemoUser = isDemo || isLocal;
+        _demoUserEmail = email ?? localEmail;
+        _demoUserName = name ?? localName;
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Refresh demo auth check when screen is built (ensures it updates after login)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDemoAuth();
+    });
+
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       body: SafeArea(
@@ -24,8 +94,10 @@ class ProfileScreen extends StatelessWidget {
             }
 
             final authService = AuthService();
-            final isGuest = user.isGuest;
-            final isSignedIn = authService.isSignedIn;
+            // Check Firebase, demo, and local user authentication
+            final isSignedIn = authService.isSignedIn || _isDemoUser;
+            // User is not a guest if they're signed in (Firebase, demo, or local)
+            final isGuest = user.isGuest && !isSignedIn;
 
             return SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -33,9 +105,9 @@ class ProfileScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // Header
-                  const Text(
-                    'Profile',
-                    style: TextStyle(
+                  Text(
+                    AppLocalizations.of(context)?.profile ?? 'Profile',
+                    style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: Colors.white,
@@ -50,11 +122,27 @@ class ProfileScreen extends StatelessWidget {
                   ],
 
                   // Profile Avatar & Info
-                  _buildProfileHeader(context, user, authService),
+                  _buildProfileHeader(context, user, authService, isSignedIn, _demoUserEmail, _demoUserName),
                   const SizedBox(height: 24),
 
+                  // Level/XP Display
+                  _buildLevelCard(user),
+                  const SizedBox(height: 16),
+                  
                   // Stats Grid
                   _buildStatsGrid(user),
+                  const SizedBox(height: 24),
+                  
+                  // Achievements Card
+                  _buildAchievementsCard(context),
+                  const SizedBox(height: 16),
+                  
+                  // Leaderboard Card
+                  _buildLeaderboardCard(context),
+                  const SizedBox(height: 16),
+                  
+                  // Card Collection Card
+                  _buildCardCollectionCard(context),
                   const SizedBox(height: 24),
 
                   // Premium Banner (if not premium)
@@ -73,8 +161,8 @@ class ProfileScreen extends StatelessWidget {
                   ),
 
                   // Settings Section
-                  const Text(
-                    'Settings',
+                  Text(
+                    AppLocalizations.of(context)?.settings ?? 'Settings',
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -169,82 +257,93 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileHeader(BuildContext context, dynamic user, AuthService authService) {
+  Widget _buildProfileHeader(
+    BuildContext context,
+    dynamic user,
+    AuthService authService,
+    bool isSignedIn,
+    String? demoEmail,
+    String? demoName,
+  ) {
+    // Determine display name and email
+    final displayName = demoName ?? (authService.displayName ?? user.username);
+    final displayEmail = demoEmail ?? authService.email;
+    
     return Center(
-      child: Column(
-        children: [
+                    child: Column(
+                      children: [
           // Avatar
-          Container(
+                        Container(
             width: 100,
             height: 100,
-            decoration: BoxDecoration(
-              gradient: AppTheme.primaryGradient,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
+                          decoration: BoxDecoration(
+                            gradient: AppTheme.primaryGradient,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
                   color: AppTheme.primaryNeon.withOpacity(0.4),
                   blurRadius: 20,
                   spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Center(
-              child: Text(
-                user.username[0].toUpperCase(),
-                style: const TextStyle(
+                              ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                displayName[0].toUpperCase(),
+                              style: const TextStyle(
                   fontSize: 48,
-                  fontWeight: FontWeight.bold,
+                                fontWeight: FontWeight.bold,
                   color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
           
           // Username
-          Text(
-            user.username,
-            style: const TextStyle(
+                        Text(
+            displayName,
+                          style: const TextStyle(
               fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
           
           // Status Badge
-          Container(
+                        Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            decoration: BoxDecoration(
-              color: authService.isSignedIn
+                          decoration: BoxDecoration(
+              color: isSignedIn
                   ? AppTheme.primaryNeon.withOpacity(0.2)
                   : Colors.orange.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: authService.isSignedIn
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                color: isSignedIn
                     ? AppTheme.primaryNeon
                     : Colors.orange,
-              ),
-            ),
-            child: Text(
-              authService.isSignedIn
-                  ? '✓ ${authService.providerName}'
+                            ),
+                          ),
+                          child: Text(
+              isSignedIn
+                  ? (demoEmail != null ? '✓ Demo Account' : '✓ ${authService.providerName}')
                   : '👤 Guest',
-              style: TextStyle(
+                            style: TextStyle(
                 fontSize: 12,
-                color: authService.isSignedIn
+                color: isSignedIn
                     ? AppTheme.primaryNeon
                     : Colors.orange,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
           
           // Email (if signed in)
-          if (authService.isSignedIn && authService.email != null) ...[
+          if (isSignedIn && displayEmail != null) ...[
             const SizedBox(height: 8),
             Text(
-              authService.email!,
+              displayEmail,
               style: TextStyle(
                 fontSize: 13,
                 color: Colors.white.withOpacity(0.6),
@@ -256,22 +355,295 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildLevelCard(dynamic user) {
+    final levelProgress = user.levelProgress;
+    final xpNeeded = user.xpForNextLevel - user.xpForCurrentLevel;
+    final xpInLevel = user.xp - user.xpForCurrentLevel;
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: AppTheme.primaryGradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryNeon.withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${AppLocalizations.of(context)?.level ?? 'Level'} ${user.level}',
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$xpInLevel / $xpNeeded ${AppLocalizations.of(context)?.xp ?? 'XP'}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.white.withOpacity(0.9),
+                        ),
+                      ),
+                    ],
+                  ),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    '${user.level}',
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: levelProgress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withOpacity(0.2),
+              valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+            ),
+                        ),
+                      ],
+                    ),
+    );
+  }
+
+  Widget _buildAchievementsCard(BuildContext context) {
+    return GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+          MaterialPageRoute(builder: (_) => const AchievementsScreen()),
+                        );
+                      },
+                      child: Container(
+        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+                          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Row(
+                          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryNeon.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.emoji_events,
+                color: AppTheme.primaryNeon,
+                size: 28,
+              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    AppLocalizations.of(context)?.achievements ?? 'Achievements',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    AppLocalizations.of(context)?.viewProgress ?? 'View your progress and unlocks',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white60,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.arrow_forward_ios,
+              color: Colors.white30,
+                              size: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+    );
+  }
+
+  Widget _buildLeaderboardCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LeaderboardScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.amber.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.leaderboard,
+                color: Colors.amber,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLocalizations.of(context)?.leaderboard ?? 'Leaderboards',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    AppLocalizations.of(context)?.global ?? 'Compete with players worldwide',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white60,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white30,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardCollectionCard(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const CardCollectionScreen()),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.darkCard,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white10),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.purple.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.collections,
+                color: Colors.purple,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLocalizations.of(context)?.cardCollection ?? 'Card Collection',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    AppLocalizations.of(context)?.collectibleCards ?? 'Collect cards and build your deck',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white60,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: Colors.white30,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatsGrid(dynamic user) {
+    final localizations = AppLocalizations.of(context);
     return Row(
       children: [
         Expanded(
-          child: _buildStatCard('🪙', user.coins.toString(), 'Coins', Colors.amber),
+          child: _buildStatCard('🪙', user.coins.toString(), localizations?.coins ?? 'Coins', Colors.amber),
         ),
         const SizedBox(width: 12),
         Expanded(
-          child: _buildStatCard('🔥', user.streakCount.toString(), 'Streak', Colors.orange),
+          child: _buildStatCard('🔥', user.streakCount.toString(), localizations?.streak ?? 'Streak', Colors.orange),
         ),
         const SizedBox(width: 12),
         Expanded(
           child: _buildStatCard(
             '🎯',
             '${(user.stats.accuracy * 100).toStringAsFixed(0)}%',
-            'Accuracy',
+            localizations?.accuracy ?? 'Accuracy',
             AppTheme.primaryNeon,
           ),
         ),
@@ -321,7 +693,7 @@ class ProfileScreen extends StatelessWidget {
       },
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
+          decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.purple.shade700, Colors.purple.shade500],
           ),
@@ -343,30 +715,30 @@ class ProfileScreen extends StatelessWidget {
                 shape: BoxShape.circle,
               ),
               child: const Icon(Icons.star, color: Colors.white, size: 24),
-            ),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Go Premium!',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+        ),
+        const SizedBox(width: 16),
+            Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                    AppLocalizations.of(context)?.play ?? 'Go Premium!',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
                       color: Colors.white,
-                    ),
-                  ),
-                  Text(
-                    'Ad-free from \$3.99/month',
-                    style: TextStyle(
+                ),
+              ),
+              Text(
+                    '${AppLocalizations.of(context)?.freeCoins ?? 'Ad-free'} from \$3.99/month',
+                style: TextStyle(
                       fontSize: 13,
                       color: Colors.white70,
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
+            ],
+          ),
+        ),
             const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
           ],
         ),
@@ -385,8 +757,8 @@ class ProfileScreen extends StatelessWidget {
         children: [
           _buildSettingItem(
             icon: Icons.notifications,
-            title: 'Notifications',
-            subtitle: 'Manage notifications',
+            title: AppLocalizations.of(context)?.notifications ?? 'Notifications',
+            subtitle: AppLocalizations.of(context)?.manageNotifications ?? 'Manage notifications',
             onTap: () {
               Navigator.push(
                 context,
@@ -395,25 +767,61 @@ class ProfileScreen extends StatelessWidget {
             },
           ),
           const Divider(height: 1, color: Colors.white10),
+          Consumer<LocaleService>(
+            builder: (context, localeService, _) {
+              final languageName = localeService.getLanguageName(
+                localeService.currentLocale.languageCode,
+              );
+              return _buildSettingItem(
+                icon: Icons.language,
+                title: AppLocalizations.of(context)?.language ?? 'Language',
+                subtitle: languageName,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const LanguageSelectionScreen(),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          const Divider(height: 1, color: Colors.white10),
           _buildSettingItem(
-            icon: Icons.language,
-            title: 'Language',
-            subtitle: 'English',
-            onTap: () {},
+            icon: Icons.person_add,
+            title: AppLocalizations.of(context)?.inviteFriends ?? 'Invite Friends',
+            subtitle: AppLocalizations.of(context)?.share ?? 'Share and earn coins',
+            onTap: () {
+              showDialog(
+                context: context,
+                builder: (context) => const InviteFriendsDialog(),
+              );
+            },
           ),
           const Divider(height: 1, color: Colors.white10),
           _buildSettingItem(
             icon: Icons.help,
-            title: 'Help & Support',
-            subtitle: 'Get help',
-            onTap: () {},
+            title: AppLocalizations.of(context)?.helpSupport ?? 'Help & Support',
+            subtitle: AppLocalizations.of(context)?.weAreHereToHelp ?? 'Get help',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const HelpSupportScreen()),
+              );
+            },
           ),
           const Divider(height: 1, color: Colors.white10),
           _buildSettingItem(
             icon: Icons.info,
-            title: 'About',
-            subtitle: 'MindRush v1.0.3 — The Thinking Game.',
-            onTap: () {},
+            title: AppLocalizations.of(context)?.about ?? 'About',
+            subtitle: '${AppLocalizations.of(context)?.appName ?? 'MindRush'} v1.0.3 — ${AppLocalizations.of(context)?.appTagline ?? 'The Thinking Game'}.',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AboutScreen()),
+              );
+            },
           ),
         ],
       ),

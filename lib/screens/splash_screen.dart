@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../theme/app_theme.dart';
+import '../l10n/app_localizations.dart';
 import 'main_navigation.dart';
 import '../services/version_check_service.dart';
 import '../widgets/update_dialog.dart';
@@ -80,17 +81,20 @@ class _SplashScreenState extends State<SplashScreen>
 
     if (!mounted) return;
 
-    // Check for updates
+    // Initialize version check service first
     final versionService = VersionCheckService();
-    final isUpdateRequired = versionService.isUpdateRequired();
-    final isForceUpdate = versionService.isForceUpdateEnabled();
+    await versionService.initialize();
+
+    // Check for updates
+    final isUpdateRequired = await versionService.isUpdateRequired();
+    final isForceUpdate = await versionService.isForceUpdateEnabled();
 
     if (isUpdateRequired) {
-      // Show update dialog
+      // Show update dialog - BLOCKING if force update
       if (mounted) {
-        showDialog(
+        await showDialog(
           context: context,
-          barrierDismissible: !isForceUpdate,
+          barrierDismissible: false, // Never allow dismissal
           builder: (context) => UpdateDialog(
             title: versionService.getUpdateTitle(),
             message: versionService.getUpdateMessage(),
@@ -100,11 +104,20 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
 
-      // If not force update, still navigate (user can dismiss)
-      if (!isForceUpdate && mounted) {
+      // If force update, NEVER navigate - keep checking and showing dialog
+      if (isForceUpdate) {
+        // Wait a bit and re-check (in case user tries to bypass)
+        await Future.delayed(const Duration(seconds: 2));
+        if (mounted) {
+          _checkForUpdatesAndNavigate();
+        }
+        return; // Don't navigate - block app completely
+      }
+      
+      // If not force update, user dismissed - navigate but check again on resume
+      if (mounted) {
         _navigateToHome();
       }
-      // If force update, don't navigate - user must update
     } else {
       // No update required, navigate normally
       _navigateToHome();
@@ -235,9 +248,9 @@ class _SplashScreenState extends State<SplashScreen>
                             shaderCallback: (bounds) {
                               return AppTheme.primaryGradient.createShader(bounds);
                             },
-                            child: const Text(
-                              'MindRush',
-                              style: TextStyle(
+                            child: Text(
+                              AppLocalizations.of(context)?.appName ?? 'MindRush',
+                              style: const TextStyle(
                                 fontSize: 48,
                                 fontWeight: FontWeight.bold,
                                 color: Colors.white,
@@ -246,9 +259,9 @@ class _SplashScreenState extends State<SplashScreen>
                             ),
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'The Thinking Game',
-                            style: TextStyle(
+                          Text(
+                            AppLocalizations.of(context)?.appTagline ?? 'The Thinking Game',
+                            style: const TextStyle(
                               fontSize: 16,
                               color: Colors.white60,
                               letterSpacing: 1,

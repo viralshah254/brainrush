@@ -10,7 +10,7 @@ class AdService {
 
   // 🧪 TESTING MODE: Set to true to use Google's test ads (always available)
   // Set to false to use your real ad units
-  static const bool _useTestAds = true;
+  static const bool _useTestAds = false; // Production ads enabled
 
   // Platform-specific App IDs
   // Android: ca-app-pub-4248679794653671~3486611912
@@ -30,7 +30,7 @@ class AdService {
       if (Platform.isIOS) {
         return 'ca-app-pub-4248679794653671/9905514752'; // iOS "Get a life" ad
       } else {
-        return 'ca-app-pub-4248679794653671/5995363366'; // Android Try again
+        return 'ca-app-pub-4248679794653671/5995363366'; // Android Try again (watch ad to try again)
       }
     }
   }
@@ -46,9 +46,13 @@ class AdService {
     } else {
       // Your production ad units
       if (Platform.isIOS) {
-        return 'ca-app-pub-4248679794653671/9905514752'; // iOS (using same for now)
+        // TODO: Replace with your actual iOS Rewarded Interstitial Ad Unit ID
+        // For now, using a placeholder - you need to create a Rewarded Interstitial ad unit in AdMob
+        // The error occurs because 9905514752 is a Rewarded Ad, not Rewarded Interstitial
+        // Create a new Rewarded Interstitial ad unit in AdMob Console and replace this ID
+        return 'ca-app-pub-4248679794653671/9905514752'; // ⚠️ WRONG TYPE - needs Rewarded Interstitial ID
       } else {
-        return 'ca-app-pub-4248679794653671/6123355873'; // Android Round complete
+        return 'ca-app-pub-4248679794653671/8749519214'; // Android Double points and all other ads
       }
     }
   }
@@ -257,6 +261,8 @@ class AdService {
 
     // ignore: avoid_print
     print('📺 Loading Round Complete ad for ${Platform.isIOS ? "iOS" : "Android"}...');
+    // ignore: avoid_print
+    print('📺 Ad Unit ID: $_rewardedInterstitialAdUnitId');
 
     try {
       await RewardedInterstitialAd.load(
@@ -291,8 +297,20 @@ class AdService {
             _roundCompleteRewardedInterstitialAd = null;
             // ignore: avoid_print
             print('❌ Round Complete ad failed to load: ${error.code} - ${error.message}');
+            
+            // If error is "Ad unit doesn't match format", it means wrong ad unit type
+            if (error.code == 1 && error.message.contains('format')) {
+              print('⚠️ ERROR: Ad unit ID is wrong type!');
+              print('⚠️ You are using a Rewarded Ad unit ID for Rewarded Interstitial Ad.');
+              print('⚠️ Please create a Rewarded Interstitial ad unit in AdMob Console.');
+              print('⚠️ Current ID: $_rewardedInterstitialAdUnitId');
+              // Don't retry if it's a format error - it will keep failing
+              completer.complete(false);
+              return;
+            }
+            
             completer.complete(false);
-            // Retry after delay
+            // Retry after delay (only if not a format error)
             Future.delayed(const Duration(seconds: 30), () => loadRoundCompleteAd());
           },
         ),

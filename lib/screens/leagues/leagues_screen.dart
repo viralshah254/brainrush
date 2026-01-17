@@ -7,9 +7,17 @@ import '../../providers/user_provider.dart';
 import '../../widgets/out_of_coins_dialog.dart';
 import '../game_screen.dart';
 import '../../providers/game_provider.dart';
+import '../../l10n/app_localizations.dart';
 
 class LeaguesScreen extends StatefulWidget {
-  const LeaguesScreen({super.key});
+  final String? gradeLevel; // For education mode grade filtering
+  final bool isEducationMode; // Whether this is education mode
+
+  const LeaguesScreen({
+    super.key,
+    this.gradeLevel,
+    this.isEducationMode = false,
+  });
 
   @override
   State<LeaguesScreen> createState() => _LeaguesScreenState();
@@ -42,12 +50,21 @@ class _LeaguesScreenState extends State<LeaguesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Only show back button if we can pop (i.e., navigated via push, not from bottom nav)
+    final canPop = Navigator.canPop(context);
+    
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
       appBar: AppBar(
-        title: const Text('Global Leagues'),
+        title: Text(AppLocalizations.of(context)?.globalLeagues ?? 'Global Leagues'),
         backgroundColor: AppTheme.darkBg,
-        automaticallyImplyLeading: false,
+        automaticallyImplyLeading: canPop,
+        leading: canPop
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => Navigator.of(context).pop(),
+              )
+            : null,
       ),
       body: Column(
         children: [

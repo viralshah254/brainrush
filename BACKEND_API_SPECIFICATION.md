@@ -649,10 +649,14 @@
 | Get today's reward | `/rewards/daily/today` | GET | Yes | REST | `daily_rewards` |
 | Claim daily reward | `/rewards/daily/claim` | POST | Yes | REST | `user_rewards`, `user_wallets` |
 | Load reward calendar | `/rewards/daily/calendar` | GET | Yes | REST | `daily_rewards`, `user_rewards` |
+| Claim daily login reward | `/users/me/login-reward` | POST | Yes | REST | `user_rewards`, `user_wallets` |
+| Claim free coins (4-hour cooldown) | `/users/me/free-coins` | POST | Yes | REST | `user_wallets`, `wallet_transactions` |
+| Spin lucky wheel (once per day) | `/users/me/lucky-spin` | POST | Yes | REST | `user_wallets`, `wallet_transactions` |
 
 **Entities:**
 - `daily_rewards` (id, dayOfWeek, type, amount, description)
 - `user_rewards` (userId, rewardId, claimed, claimedAt)
+- `wallet_transactions` (id, userId, type, amount, reason, createdAt)
 
 ---
 
@@ -701,6 +705,386 @@
 - `notification_preferences` (userId, dailyReminder, friendRequests, leagueUpdates, quietHours)
 - `notifications` (id, userId, type, title, body, read, sentAt)
 - `notification_deliveries` (id, notificationId, deviceId, status, deliveredAt)
+
+---
+
+### **Daily Quests System**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get daily quests | `/quests/daily` | GET | Yes | REST | `daily_quests`, `user_quest_progress` |
+| Update quest progress | `/quests/daily/{questId}/progress` | POST | Yes | REST | `user_quest_progress` |
+| Claim quest reward | `/quests/daily/{questId}/claim` | POST | Yes | REST | `user_quest_progress`, `user_wallets` |
+| Claim all quests bonus | `/quests/daily/bonus/claim` | POST | Yes | REST | `user_wallets`, `wallet_transactions` |
+
+**Request Body (Update Progress):**
+```json
+{
+  "questType": "PLAY_GAMES" | "ANSWER_CORRECTLY" | "COMPLETE_DAILY_CHALLENGE" | "PLAY_WITH_FRIENDS",
+  "increment": 1
+}
+```
+
+**Response (Get Daily Quests):**
+```json
+{
+  "quests": [
+    {
+      "id": "quest_123",
+      "type": "PLAY_GAMES",
+      "title": "Play 3 Games",
+      "description": "Complete 3 games in any mode",
+      "currentValue": 2,
+      "targetValue": 3,
+      "coinReward": 100,
+      "isCompleted": false,
+      "isClaimed": false
+    }
+  ],
+  "allQuestsBonus": {
+    "available": true,
+    "amount": 200,
+    "claimed": false
+  }
+}
+```
+
+**Entities:**
+- `daily_quests` (id, type, title, description, targetValue, coinReward, dayOfWeek)
+- `user_quest_progress` (userId, questId, currentValue, isCompleted, isClaimed, updatedAt)
+
+---
+
+### **Weekly Challenges System**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get weekly challenges | `/challenges/weekly` | GET | Yes | REST | `weekly_challenges`, `user_weekly_progress` |
+| Update challenge progress | `/challenges/weekly/{challengeId}/progress` | POST | Yes | REST | `user_weekly_progress` |
+| Claim challenge reward | `/challenges/weekly/{challengeId}/claim` | POST | Yes | REST | `user_weekly_progress`, `user_wallets` |
+
+**Response:**
+```json
+{
+  "weekStartDate": "2026-01-13T00:00:00Z",
+  "weekEndDate": "2026-01-19T23:59:59Z",
+  "challenges": [
+    {
+      "id": "challenge_123",
+      "title": "Game Marathon",
+      "description": "Play 20 games this week",
+      "emoji": "🎮",
+      "targetValue": 20,
+      "currentProgress": 12,
+      "coinReward": 300,
+      "xpReward": 100,
+      "isCompleted": false
+    }
+  ]
+}
+```
+
+**Entities:**
+- `weekly_challenges` (id, title, description, targetValue, coinReward, xpReward, weekStartDate)
+- `user_weekly_progress` (userId, challengeId, currentProgress, isCompleted, isClaimed, weekStartDate)
+
+---
+
+### **Card Collection System**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get user's card collection | `/cards/collection` | GET | Yes | REST | `user_cards`, `collectible_cards` |
+| Get available cards | `/cards/available` | GET | Yes | REST | `collectible_cards` |
+| Unlock card | `/cards/{cardId}/unlock` | POST | Yes | REST | `user_cards`, `collectible_cards` |
+| Open card pack | `/cards/pack/open` | POST | Yes | REST | `user_cards`, `wallet_transactions` |
+| Toggle card favorite | `/cards/{cardId}/favorite` | PUT | Yes | REST | `user_cards` |
+| Get collection stats | `/cards/stats` | GET | Yes | REST | `user_cards`, `collectible_cards` |
+
+**Response (Get Collection):**
+```json
+{
+  "collected": [
+    {
+      "id": "math_basics",
+      "name": "Math Basics",
+      "emoji": "🔢",
+      "category": "MATH",
+      "rarity": "COMMON",
+      "quantity": 1,
+      "obtainedAt": "2026-01-11T10:00:00Z",
+      "isFavorite": false
+    }
+  ],
+  "missing": [...],
+  "stats": {
+    "total": 20,
+    "collected": 8,
+    "completion": 40.0,
+    "byRarity": {
+      "COMMON": 5,
+      "RARE": 2,
+      "EPIC": 1,
+      "LEGENDARY": 0
+    }
+  }
+}
+```
+
+**Entities:**
+- `collectible_cards` (id, name, description, emoji, category, rarity, unlockCondition, unlockValue, isEducationMode)
+- `user_cards` (userId, cardId, quantity, obtainedAt, isFavorite)
+
+---
+
+### **Achievements System**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get user achievements | `/achievements` | GET | Yes | REST | `user_achievements`, `achievements` |
+| Get achievement details | `/achievements/{achievementId}` | GET | Yes | REST | `achievements`, `user_achievements` |
+| Check achievement progress | `/achievements/{achievementId}/progress` | GET | Yes | REST | `user_achievements` |
+
+**Response:**
+```json
+{
+  "achievements": [
+    {
+      "id": "ach_123",
+      "name": "First Steps",
+      "description": "Complete your first game",
+      "icon": "👣",
+      "category": "GAMEPLAY",
+      "progress": 1,
+      "requirement": 1,
+      "unlocked": true,
+      "unlockedAt": "2026-01-10T12:00:00Z",
+      "points": 10
+    }
+  ],
+  "totalPoints": 150,
+  "unlockedCount": 5,
+  "totalCount": 25
+}
+```
+
+**Entities:**
+- `achievements` (id, name, description, icon, category, requirement, points)
+- `user_achievements` (userId, achievementId, progress, unlocked, unlockedAt)
+
+---
+
+### **Friend Invites & Referrals**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get invite status | `/invites/status` | GET | Yes | REST | `user_invites` |
+| Track invite sent | `/invites/track` | POST | Yes | REST | `user_invites` |
+| Claim invite reward | `/invites/reward/claim` | POST | Yes | REST | `user_invites`, `user_wallets` |
+| Get referral link | `/invites/link` | GET | Yes | REST | `user_invites` |
+
+**Response (Get Status):**
+```json
+{
+  "invitesSent": 3,
+  "requiredInvites": 5,
+  "remainingInvites": 2,
+  "rewardAvailable": false,
+  "rewardClaimed": false,
+  "rewardAmount": 500,
+  "inviteLink": "https://mindrush.com/invite/ABC123"
+}
+```
+
+**Entities:**
+- `user_invites` (userId, invitesSent, rewardClaimed, rewardClaimedAt, inviteCode)
+
+---
+
+### **Contacts & Friend Discovery**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Find friends from contacts | `/friends/find-from-contacts` | POST | Yes | REST | `user_contacts`, `users` |
+| Upload contacts (hashed) | `/contacts/upload` | POST | Yes | REST | `user_contacts` |
+| Get contact matches | `/contacts/matches` | GET | Yes | REST | `user_contacts`, `users` |
+
+**Request Body (Find from Contacts):**
+```json
+{
+  "phoneNumbers": [
+    "+1234567890",
+    "+0987654321"
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "matches": [
+    {
+      "phoneNumber": "+1234567890",
+      "userId": "user_uuid",
+      "username": "Alex",
+      "avatarUrl": "https://...",
+      "isFriend": false,
+      "hasPendingRequest": false
+    }
+  ],
+  "totalMatches": 1
+}
+```
+
+**Privacy Notes:**
+- Phone numbers must be hashed before storage/comparison
+- Only return users who opted into contact discovery
+- Rate limit: 100 phone numbers per request
+
+**Entities:**
+- `user_contacts` (userId, hashedPhoneNumber, matchedUserId, discoveredAt)
+
+---
+
+### **Version Check & App Updates**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Check app version | `/app/version-check` | GET | No | REST | `app_versions` |
+| Get force update status | `/app/force-update` | GET | No | REST | `app_versions` |
+
+**Response:**
+```json
+{
+  "currentVersion": "1.0.3",
+  "latestVersion": "1.0.4",
+  "forceUpdate": false,
+  "updateUrl": {
+    "ios": "https://apps.apple.com/app/id...",
+    "android": "https://play.google.com/store/apps/details?id=..."
+  },
+  "releaseNotes": "Bug fixes and performance improvements"
+}
+```
+
+**Entities:**
+- `app_versions` (version, platform, forceUpdate, releaseNotes, releaseDate)
+
+---
+
+### **Language & Localization**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get available languages | `/languages` | GET | No | REST | `supported_languages` |
+| Update user language | `/users/me/language` | PUT | Yes | REST | `user_preferences` |
+
+**Response:**
+```json
+{
+  "languages": [
+    {
+      "code": "en",
+      "name": "English",
+      "nativeName": "English"
+    },
+    {
+      "code": "es",
+      "name": "Spanish",
+      "nativeName": "Español"
+    }
+  ],
+  "defaultLanguage": "en"
+}
+```
+
+**Entities:**
+- `supported_languages` (code, name, nativeName, enabled)
+- `user_preferences` (userId, language, ...)
+
+---
+
+### **Help & Support**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get FAQ | `/help/faq` | GET | No | REST | `faq_items` |
+| Submit support ticket | `/help/ticket` | POST | Yes | REST | `support_tickets` |
+| Get support email | `/help/contact` | GET | No | REST | - |
+
+**Request Body (Submit Ticket):**
+```json
+{
+  "subject": "Question about coins",
+  "message": "How do I earn more coins?",
+  "category": "GENERAL" | "TECHNICAL" | "BILLING" | "FEATURE_REQUEST"
+}
+```
+
+**Entities:**
+- `faq_items` (id, question, answer, category, order)
+- `support_tickets` (id, userId, subject, message, category, status, createdAt)
+
+---
+
+### **About & Legal**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get app info | `/about` | GET | No | REST | - |
+| Get terms & privacy | `/legal/terms` | GET | No | REST | - |
+| Get privacy policy | `/legal/privacy` | GET | No | REST | - |
+
+**Response:**
+```json
+{
+  "appName": "MindRush",
+  "version": "1.0.3",
+  "developer": "DV Tech Ventures",
+  "copyright": "© 2026 DV Tech Ventures",
+  "termsUrl": "https://www.dvtechventures.com/TandCs",
+  "privacyUrl": "https://www.dvtechventures.com/Privacy"
+}
+```
+
+---
+
+### **Coin Store**
+
+| Action | Endpoint | Method | Auth | Real-time | Database Entities |
+|--------|----------|--------|------|-----------|-------------------|
+| Get coin packages | `/store/coins/packages` | GET | Yes | REST | `coin_packages` |
+| Purchase coins | `/store/coins/purchase` | POST | Yes | REST | `coin_packages`, `payments`, `user_wallets` |
+| Get purchase history | `/store/purchases` | GET | Yes | REST | `payments` |
+
+**Response (Get Packages):**
+```json
+{
+  "packages": [
+    {
+      "id": "coins_100",
+      "name": "100 Coins",
+      "coins": 100,
+      "price": 0.99,
+      "currency": "USD",
+      "bonus": 0,
+      "popular": false
+    },
+    {
+      "id": "coins_500",
+      "name": "500 Coins",
+      "coins": 500,
+      "price": 4.99,
+      "currency": "USD",
+      "bonus": 50,
+      "popular": true
+    }
+  ]
+}
+```
+
+**Entities:**
+- `coin_packages` (id, name, coins, price, currency, bonus, popular, active)
 
 ---
 
@@ -1318,6 +1702,170 @@ CREATE TABLE error_logs (
   occurred_at TIMESTAMP NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Daily Quests
+CREATE TABLE daily_quests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type VARCHAR(50) NOT NULL, -- 'PLAY_GAMES', 'ANSWER_CORRECTLY', 'COMPLETE_DAILY_CHALLENGE', 'PLAY_WITH_FRIENDS'
+  title VARCHAR(100) NOT NULL,
+  description TEXT,
+  target_value INTEGER NOT NULL,
+  coin_reward INTEGER DEFAULT 0,
+  day_of_week INTEGER, -- 1-7 (optional, for day-specific quests)
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- User Quest Progress
+CREATE TABLE user_quest_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  quest_id UUID REFERENCES daily_quests(id),
+  current_value INTEGER DEFAULT 0,
+  is_completed BOOLEAN DEFAULT false,
+  is_claimed BOOLEAN DEFAULT false,
+  quest_date DATE NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, quest_id, quest_date)
+);
+
+-- Weekly Challenges
+CREATE TABLE weekly_challenges (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title VARCHAR(100) NOT NULL,
+  description TEXT,
+  emoji VARCHAR(10),
+  target_value INTEGER NOT NULL,
+  coin_reward INTEGER DEFAULT 0,
+  xp_reward INTEGER DEFAULT 0,
+  week_start_date DATE NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(id, week_start_date)
+);
+
+-- User Weekly Challenge Progress
+CREATE TABLE user_weekly_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  challenge_id UUID REFERENCES weekly_challenges(id),
+  current_progress INTEGER DEFAULT 0,
+  is_completed BOOLEAN DEFAULT false,
+  is_claimed BOOLEAN DEFAULT false,
+  week_start_date DATE NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, challenge_id, week_start_date)
+);
+
+-- Collectible Cards
+CREATE TABLE collectible_cards (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  emoji VARCHAR(10),
+  category VARCHAR(50) NOT NULL, -- 'MATH', 'SCIENCE', 'HISTORY', 'GEOGRAPHY', 'LITERATURE', 'ACHIEVEMENT', 'MIXED'
+  rarity VARCHAR(20) NOT NULL, -- 'COMMON', 'RARE', 'EPIC', 'LEGENDARY'
+  unlock_condition TEXT,
+  unlock_value INTEGER,
+  is_education_mode BOOLEAN DEFAULT false,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- User Cards
+CREATE TABLE user_cards (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  card_id VARCHAR(100) REFERENCES collectible_cards(id),
+  quantity INTEGER DEFAULT 1,
+  obtained_at TIMESTAMP DEFAULT NOW(),
+  is_favorite BOOLEAN DEFAULT false,
+  UNIQUE(user_id, card_id)
+);
+
+CREATE INDEX idx_user_cards_user ON user_cards(user_id);
+CREATE INDEX idx_user_cards_card ON user_cards(card_id);
+
+-- User Invites
+CREATE TABLE user_invites (
+  user_id UUID PRIMARY KEY REFERENCES users(id),
+  invites_sent INTEGER DEFAULT 0,
+  reward_claimed BOOLEAN DEFAULT false,
+  reward_claimed_at TIMESTAMP,
+  invite_code VARCHAR(20) UNIQUE,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- User Contacts (Hashed)
+CREATE TABLE user_contacts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  hashed_phone_number VARCHAR(255) NOT NULL,
+  matched_user_id UUID REFERENCES users(id),
+  discovered_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, hashed_phone_number)
+);
+
+CREATE INDEX idx_user_contacts_hashed ON user_contacts(hashed_phone_number);
+
+-- App Versions
+CREATE TABLE app_versions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  version VARCHAR(20) NOT NULL,
+  platform VARCHAR(20) NOT NULL, -- 'ios', 'android'
+  force_update BOOLEAN DEFAULT false,
+  release_notes TEXT,
+  release_date TIMESTAMP DEFAULT NOW(),
+  active BOOLEAN DEFAULT true,
+  UNIQUE(version, platform)
+);
+
+-- FAQ Items
+CREATE TABLE faq_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  category VARCHAR(50),
+  display_order INTEGER DEFAULT 0,
+  language VARCHAR(5) DEFAULT 'en',
+  active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Support Tickets
+CREATE TABLE support_tickets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  subject VARCHAR(200) NOT NULL,
+  message TEXT NOT NULL,
+  category VARCHAR(50), -- 'GENERAL', 'TECHNICAL', 'BILLING', 'FEATURE_REQUEST'
+  status VARCHAR(20) DEFAULT 'OPEN', -- 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_support_tickets_user ON support_tickets(user_id);
+CREATE INDEX idx_support_tickets_status ON support_tickets(status);
+
+-- Supported Languages
+CREATE TABLE supported_languages (
+  code VARCHAR(5) PRIMARY KEY,
+  name VARCHAR(50) NOT NULL,
+  native_name VARCHAR(50) NOT NULL,
+  enabled BOOLEAN DEFAULT true,
+  display_order INTEGER DEFAULT 0
+);
+
+-- Coin Packages
+CREATE TABLE coin_packages (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  coins INTEGER NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  currency VARCHAR(3) DEFAULT 'USD',
+  bonus INTEGER DEFAULT 0,
+  popular BOOLEAN DEFAULT false,
+  active BOOLEAN DEFAULT true,
+  display_order INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
 ```
 
 ---
@@ -1335,8 +1883,14 @@ CREATE TABLE error_logs (
 | **Profile** | 1 | 12 | 0 | 12 |
 | **Education** | 2 | 10 | 0 | 10 |
 | **Monetization** | 2 | 12 | 0 | 10 |
-| **System** | - | 15 | 0 | 12 |
-| **TOTAL** | **19** | **118** | **12** | **111** |
+| **Daily Quests** | 1 | 4 | 0 | 4 |
+| **Weekly Challenges** | 1 | 3 | 0 | 3 |
+| **Card Collection** | 1 | 6 | 0 | 6 |
+| **Achievements** | 1 | 3 | 0 | 3 |
+| **Invites & Referrals** | 1 | 4 | 0 | 4 |
+| **Contacts Discovery** | 1 | 3 | 0 | 3 |
+| **System & Infrastructure** | - | 25 | 0 | 20 |
+| **TOTAL** | **24** | **171** | **12** | **150** |
 
 ---
 
@@ -1344,9 +1898,9 @@ CREATE TABLE error_logs (
 
 | Auth Type | Count | Endpoints |
 |-----------|-------|-----------|
-| **No Auth** | 7 | Signup, Login, Public endpoints |
-| **Required** | 111 | All user-specific actions |
-| **Admin Only** | 3 | Question generation, validation |
+| **No Auth** | 21 | Signup, Login, Public endpoints, FAQ, About, Version check |
+| **Required** | 150 | All user-specific actions |
+| **Admin Only** | 3 | Question generation, validation, push notifications |
 
 ---
 
@@ -1354,14 +1908,14 @@ CREATE TABLE error_logs (
 
 | Type | Count | Use Cases |
 |------|-------|-----------|
-| **REST** | 106 | Most CRUD operations, fetching data |
+| **REST** | 159 | Most CRUD operations, fetching data |
 | **WebSocket** | 12 | Multiplayer lobbies, live matches, presence |
 
 ---
 
 ## 📦 Database Entity Count
 
-**Total Tables:** 50+
+**Total Tables:** 60+
 
 | Category | Tables |
 |----------|--------|
@@ -1373,7 +1927,10 @@ CREATE TABLE error_logs (
 | **Leagues** | 5 (leagues, participants, matches, scores) |
 | **Education** | 1 (profiles) |
 | **Monetization** | 7 (subscriptions, payments, ads, rewards) |
-| **System** | 10+ (notifications, analytics, logs, achievements) |
+| **Quests & Challenges** | 4 (daily_quests, user_quest_progress, weekly_challenges, user_weekly_progress) |
+| **Cards & Achievements** | 3 (collectible_cards, user_cards, achievements, user_achievements) |
+| **Invites & Contacts** | 2 (user_invites, user_contacts) |
+| **System** | 15+ (notifications, analytics, logs, app_versions, faq, support, languages, coin_packages) |
 
 ---
 
@@ -1418,14 +1975,38 @@ CREATE TABLE error_logs (
 ## ✅ **Document Status**
 
 **Complete:** ✅  
-**Screens Mapped:** 19  
-**Endpoints Defined:** 118  
-**Database Tables:** 50+  
+**Screens Mapped:** 24  
+**Endpoints Defined:** 171  
+**Database Tables:** 60+  
 **Ready for:** Backend Development
 
 ---
 
-**Generated by:** Brainz Rush Development Team  
-**Date:** January 11, 2026  
-**Version:** 1.0.0
+## 📝 **Changelog**
+
+### Version 1.1.0 (Updated: January 17, 2026)
+- ✅ Added Daily Quests endpoints (4 endpoints)
+- ✅ Added Weekly Challenges endpoints (3 endpoints)
+- ✅ Added Card Collection system (6 endpoints)
+- ✅ Added Achievements endpoints (3 endpoints)
+- ✅ Added Friend Invites & Referrals (4 endpoints)
+- ✅ Added Contacts & Friend Discovery (3 endpoints)
+- ✅ Added Version Check & App Updates (2 endpoints)
+- ✅ Added Language & Localization (2 endpoints)
+- ✅ Added Help & Support (3 endpoints)
+- ✅ Added About & Legal (3 endpoints)
+- ✅ Added Coin Store (3 endpoints)
+- ✅ Enhanced Daily Rewards with login rewards, free coins, and lucky spin
+- ✅ Updated statistics and summaries
+
+### Version 1.0.0 (Initial: January 11, 2026)
+- Initial comprehensive backend API specification
+- 19 screens mapped
+- 118 endpoints defined
+
+---
+
+**Generated by:** Mind Rush Development Team  
+**Last Updated:** January 17, 2026  
+**Version:** 1.1.0
 

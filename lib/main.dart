@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -16,12 +17,28 @@ import 'services/retention_service.dart';
 import 'services/fcm_service.dart';
 import 'services/local_notification_service.dart';
 import 'services/education_question_bank.dart';
+import 'services/expanded_question_bank.dart';
 import 'services/version_check_service.dart';
+import 'services/card_collection_service.dart';
+import 'services/friend_service.dart';
+import 'services/locale_service.dart';
+import 'l10n/app_localizations_delegate.dart';
 import 'theme/app_theme.dart';
 import 'screens/splash_screen.dart';
+import 'widgets/update_check_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set system UI overlay style to match dark theme immediately
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF0A0E27),
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
   
   // Set preferred orientations
   await SystemChrome.setPreferredOrientations([
@@ -92,18 +109,18 @@ void main() async {
     print('⚠️ Education subscriptions not available (Simulator) - Education subscriptions disabled');
   }
 
-  // Initialize Education Question Bank (pre-load questions)
-  try {
+  // Start loading questions in background (non-blocking)
+  // Questions will load lazily when needed, but we start the process early
+  EducationQuestionBank.initialize().catchError((e) {
     // ignore: avoid_print
-    print('📚 Pre-loading education questions...');
-    await EducationQuestionBank.initialize();
+    print('⚠️ Error loading education questions in background: $e');
+  });
+  
+  // Also pre-initialize ExpandedQuestionBank in background
+  ExpandedQuestionBank.initialize().catchError((e) {
     // ignore: avoid_print
-    print('✅ Education questions pre-loaded successfully');
-  } catch (e) {
-    // ignore: avoid_print
-    print('⚠️ Error pre-loading education questions: $e');
-    // Don't block app startup - questions will load on demand
-  }
+    print('⚠️ Error loading questions in background: $e');
+  });
 
   // Initialize Version Check Service
   try {
@@ -147,7 +164,14 @@ class MindRushApp extends StatelessWidget {
           create: (_) => AdService(),
         ),
         Provider(
-          create: (_) => QuestionService()..initialize(),
+          create: (_) {
+            final service = QuestionService();
+            // Initialize in background (non-blocking)
+            service.initialize().catchError((e) {
+              debugPrint('⚠️ Error initializing QuestionService: $e');
+            });
+            return service;
+          },
         ),
         ChangeNotifierProvider(
           create: (_) => CampaignService()..initialize(),
@@ -155,12 +179,60 @@ class MindRushApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => RetentionService(),
         ),
+        // Initialize card collection service
+        ChangeNotifierProvider(
+          create: (_) {
+            final service = CardCollectionService();
+            service.loadUserCards(); // Load user's cards
+            return service;
+          },
+        ),
+        // Initialize friend service
+        ChangeNotifierProvider(
+          create: (_) {
+            final service = FriendService();
+            service.initialize(); // Load friends
+            return service;
+          },
+        ),
+        // Initialize locale service
+        ChangeNotifierProvider(
+          create: (_) {
+            final service = LocaleService();
+            service.initialize(); // Load saved locale
+            return service;
+          },
+        ),
       ],
-      child: MaterialApp(
-        title: 'MindRush',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.darkTheme,
-        home: const SplashScreen(),
+      child: UpdateCheckWrapper(
+        child: Consumer<LocaleService>(
+          builder: (context, localeService, _) {
+            return MaterialApp(
+              title: 'MindRush',
+              debugShowCheckedModeBanner: false,
+              theme: AppTheme.darkTheme,
+              // Localization
+              locale: localeService.currentLocale,
+              supportedLocales: LocaleService.supportedLocales,
+              localizationsDelegates: [
+                const AppLocalizationsDelegate(),
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              // RTL Support
+              builder: (context, child) {
+                return Directionality(
+                  textDirection: localeService.isRTL 
+                      ? TextDirection.rtl 
+                      : TextDirection.ltr,
+                  child: child!,
+                );
+              },
+              home: const SplashScreen(),
+            );
+          },
+        ),
       ),
     );
   }

@@ -92,11 +92,24 @@ class LeagueService {
     });
   }
 
-  Future<List<League>> getLeagues({String? topic, String? status}) async {
+  Future<List<League>> getLeagues({
+    String? topic,
+    String? status,
+    String? gradeLevel,
+    bool isEducationMode = false,
+  }) async {
     // Simulate network delay
     await Future.delayed(const Duration(milliseconds: 500));
 
     var filtered = List<League>.from(_leagues);
+    
+    // In education mode, filter by grade level if provided
+    // For now, we'll return all leagues but in a real implementation,
+    // you would filter leagues that match the grade level
+    if (isEducationMode && gradeLevel != null) {
+      // TODO: Filter leagues by grade level when league model supports it
+      // For now, all leagues are shown but questions will be grade-filtered
+    }
 
     if (topic != null && topic != 'All') {
       filtered = filtered.where((l) => l.topic == topic).toList();

@@ -5,6 +5,7 @@ import '../../models/room.dart';
 import '../../services/room_service.dart';
 import '../game_screen.dart';
 import '../../providers/game_provider.dart';
+import 'multiplayer_game_screen.dart';
 
 class MultiplayerLobbyScreen extends StatefulWidget {
   final Room room;
@@ -69,7 +70,7 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen>
     }
 
     final isHost = _currentRoom!.hostId == _currentRoom!.players.first.userId;
-    final allReady = _roomService.areAllPlayersReady(_currentRoom!);
+    final canStart = _roomService.canStartGame(_currentRoom!);
 
     return Scaffold(
       backgroundColor: AppTheme.darkBg,
@@ -109,15 +110,15 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen>
                   animation: _pulseController,
                   builder: (context, child) {
                     return Transform.scale(
-                      scale: allReady ? 1.0 + (_pulseController.value * 0.05) : 1.0,
+                      scale: canStart ? 1.0 + (_pulseController.value * 0.05) : 1.0,
                       child: SizedBox(
                         height: 54,
                         child: ElevatedButton(
-                          onPressed: allReady && !_isStarting
+                          onPressed: canStart && !_isStarting
                               ? _startGame
                               : null,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: allReady
+                            backgroundColor: canStart
                                 ? AppTheme.primaryNeon
                                 : Colors.grey,
                             foregroundColor: AppTheme.darkBg,
@@ -138,7 +139,7 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen>
                                   ),
                                 )
                               : Text(
-                                  allReady
+                                  canStart
                                       ? 'Start Game 🚀'
                                       : 'Waiting for players...',
                                   style: const TextStyle(
@@ -241,18 +242,35 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen>
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+      child: Column(
         children: [
-          _buildSettingItem('📚', 'Topic', _currentRoom!.topic),
-          Container(width: 1, height: 40, color: Colors.white10),
-          _buildSettingItem(
-            '👥',
-            'Players',
-            '${_currentRoom!.players.length}/${_currentRoom!.maxPlayers}',
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSettingItem('📚', 'Topic', _currentRoom!.topic),
+              Container(width: 1, height: 40, color: Colors.white10),
+              _buildSettingItem(
+                '👥',
+                'Players',
+                '${_currentRoom!.players.length}/${_currentRoom!.maxPlayers}',
+              ),
+              Container(width: 1, height: 40, color: Colors.white10),
+              _buildSettingItem('🎯', 'Difficulty', _currentRoom!.difficulty.displayName),
+            ],
           ),
-          Container(width: 1, height: 40, color: Colors.white10),
-          _buildSettingItem('❓', 'Questions', '${_currentRoom!.totalQuestions}'),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Colors.white10),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildSettingItem('🎮', 'Rounds', '${_currentRoom!.rounds}'),
+              Container(width: 1, height: 40, color: Colors.white10),
+              _buildSettingItem('❓', 'Per Round', '${_currentRoom!.questionsPerRound}'),
+              Container(width: 1, height: 40, color: Colors.white10),
+              _buildSettingItem('📊', 'Total', '${_currentRoom!.totalQuestions}'),
+            ],
+          ),
         ],
       ),
     );
@@ -444,13 +462,12 @@ class _MultiplayerLobbyScreenState extends State<MultiplayerLobbyScreen>
 
     if (!mounted) return;
 
+    // Navigate to multiplayer game screen with rounds
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
-        builder: (_) => GameScreen(
-          category: _currentRoom!.topic,
-          questionCount: _currentRoom!.totalQuestions,
-          mode: GameMode.multiplayer,
+        builder: (_) => MultiplayerGameScreen(
+          room: _currentRoom!,
           roomCode: _currentRoom!.code,
         ),
       ),

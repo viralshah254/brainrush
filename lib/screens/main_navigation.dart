@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../services/version_check_service.dart';
+import '../widgets/update_dialog.dart';
 import 'home_screen.dart';
 import 'leagues/leagues_screen.dart';
 import 'friends/friends_screen.dart';
@@ -22,12 +24,13 @@ class _MainNavigationState extends State<MainNavigation>
   late int _currentIndex;
   late AnimationController _animationController;
   late List<Animation<double>> _iconAnimations;
+  int _profileRefreshKey = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    LeaguesScreen(),
-    FriendsScreen(),
-    ProfileScreen(),
+  List<Widget> get _screens => [
+    const HomeScreen(),
+    const LeaguesScreen(),
+    const FriendsScreen(),
+    ProfileScreen(key: ValueKey('profile_$_profileRefreshKey')),
   ];
 
   @override
@@ -51,6 +54,46 @@ class _MainNavigationState extends State<MainNavigation>
     );
 
     _animationController.forward();
+    
+    // Check for updates when navigation loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForUpdates();
+    });
+  }
+  
+  Future<void> _checkForUpdates() async {
+    try {
+      final versionService = VersionCheckService();
+      await versionService.initialize();
+      
+          final isUpdateRequired = await versionService.isUpdateRequired();
+          final isForceUpdate = await versionService.isForceUpdateEnabled();
+      
+      if (isUpdateRequired && mounted) {
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => UpdateDialog(
+            title: versionService.getUpdateTitle(),
+            message: versionService.getUpdateMessage(),
+            storeUrl: versionService.getStoreUrl(),
+            isForceUpdate: isForceUpdate,
+          ),
+        );
+        
+        // If force update, keep checking
+        if (isForceUpdate && mounted) {
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) {
+              _checkForUpdates();
+            }
+          });
+        }
+      }
+    } catch (e) {
+      // Don't block app if check fails
+      debugPrint('⚠️ Update check error: $e');
+    }
   }
 
   @override
@@ -60,31 +103,13 @@ class _MainNavigationState extends State<MainNavigation>
   }
 
   void _onTabTapped(int index) {
-    // Lock Leagues (index 1) and Friends (index 2) for now
-    if (index == 1 || index == 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.lock, color: Colors.white),
-              const SizedBox(width: 12),
-              Text(
-                '${index == 1 ? "Leagues" : "Friends"} - Coming Soon!',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          backgroundColor: Colors.deepPurple,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-    
     if (_currentIndex != index) {
       setState(() {
         _currentIndex = index;
+        // Force ProfileScreen to rebuild when switching to it (refresh auth state)
+        if (index == 3) {
+          _profileRefreshKey++;
+        }
       });
       _animationController.forward(from: 0.0);
     }
@@ -142,7 +167,6 @@ class _MainNavigationState extends State<MainNavigation>
 
   Widget _buildNavItem(int index, IconData icon, String label) {
     final isSelected = _currentIndex == index;
-    final isLocked = (index == 1 || index == 2); // Leagues and Friends locked
 
     return Expanded(
       child: GestureDetector(
@@ -157,63 +181,36 @@ class _MainNavigationState extends State<MainNavigation>
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Stack(
-            alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  AnimatedBuilder(
-                    animation: _animationController,
-                    builder: (context, child) {
-                      return Transform.scale(
-                        scale: isSelected ? _iconAnimations[index].value : 1.0,
-                        child: Icon(
-                          icon,
-                          color: isLocked
-                              ? Colors.white.withOpacity(0.3)
-                              : isSelected
-                                  ? AppTheme.primaryNeon
-                                  : Colors.white.withOpacity(0.5),
-                          size: 26,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 4),
-                  AnimatedDefaultTextStyle(
-                    duration: const Duration(milliseconds: 300),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      color: isLocked
-                          ? Colors.white.withOpacity(0.3)
-                          : isSelected
-                              ? AppTheme.primaryNeon
-                              : Colors.white.withOpacity(0.5),
+              AnimatedBuilder(
+                animation: _animationController,
+                builder: (context, child) {
+                  return Transform.scale(
+                    scale: isSelected ? _iconAnimations[index].value : 1.0,
+                    child: Icon(
+                      icon,
+                      color: isSelected
+                          ? AppTheme.primaryNeon
+                          : Colors.white.withOpacity(0.5),
+                      size: 26,
                     ),
-                    child: Text(label),
-                  ),
-                ],
+                  );
+                },
               ),
-              if (isLocked)
-                Positioned(
-                  top: 0,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.darkCard, width: 2),
-                    ),
-                    child: const Icon(
-                      Icons.lock,
-                      size: 12,
-                      color: Colors.white,
-                    ),
-                  ),
+              const SizedBox(height: 4),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 300),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected
+                      ? AppTheme.primaryNeon
+                      : Colors.white.withOpacity(0.5),
                 ),
+                child: Text(label),
+              ),
             ],
           ),
         ),

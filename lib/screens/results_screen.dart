@@ -13,6 +13,16 @@ import '../models/daily_quest.dart';
 import '../widgets/out_of_coins_dialog.dart';
 import '../widgets/ad_loading_dialog.dart';
 import '../models/daily_reward.dart';
+import '../models/achievement.dart';
+import '../widgets/milestone_celebration_dialog.dart';
+import '../services/weekly_challenge_service.dart';
+import '../services/leaderboard_service.dart';
+import '../services/card_collection_service.dart';
+import '../services/social_sharing_service.dart';
+import '../providers/mode_provider.dart';
+import '../models/leaderboard_entry.dart';
+import '../models/collectible_card.dart';
+import '../widgets/invite_friends_dialog.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int score;
@@ -125,7 +135,24 @@ class _ResultsScreenState extends State<ResultsScreen>
     // Update user data
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateUserData();
+      
+      // Show invite friends dialog after daily challenge completion
+      if (widget.mode == GameMode.daily) {
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            _showInviteFriendsDialog();
+          }
+        });
+      }
     });
+  }
+  
+  void _showInviteFriendsDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const InviteFriendsDialog(),
+    );
   }
 
   Future<void> _updateUserData() async {
@@ -213,6 +240,280 @@ class _ResultsScreenState extends State<ResultsScreen>
     
     // Record game played for smart notifications
     userProvider.recordGamePlayed();
+    
+    // Update achievements and check for unlocks
+    await _checkAchievements(userProvider);
+    
+    // Update weekly challenges
+    await _checkWeeklyChallenges(userProvider);
+    
+    // Update leaderboard
+    await _updateLeaderboard(userProvider);
+    
+    // Check and unlock cards
+    await _checkCardUnlocks(userProvider);
+    
+    // Award XP
+    final xpEarned = _calculateXPEarned();
+    final newLevel = userProvider.addXP(xpEarned);
+    
+    // Show level up dialog if leveled up
+    if (newLevel != null && mounted) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => LevelUpDialog(
+            newLevel: newLevel,
+            coinsAwarded: newLevel * 50, // Bonus coins per level
+          ),
+        );
+        userProvider.addCoins(newLevel * 50);
+      }
+    }
+  }
+  
+  int _calculateXPEarned() {
+    // Base XP from score
+    int xp = (widget.score / 10).round();
+    
+    // Calculate accuracy
+    final accuracy = widget.totalQuestions > 0 
+        ? widget.correctAnswers / widget.totalQuestions 
+        : 0.0;
+    
+    // Bonus for accuracy
+    if (accuracy >= 0.9) {
+      xp += 20; // Perfect game bonus
+    } else if (accuracy >= 0.7) {
+      xp += 10;
+    }
+    
+    // Mode multipliers
+    switch (widget.mode) {
+      case GameMode.daily:
+        xp = (xp * 1.5).round();
+        break;
+      case GameMode.league:
+        xp = (xp * 1.3).round();
+        break;
+      case GameMode.practice:
+      case GameMode.multiplayer:
+        xp = (xp * 1.1).round();
+        break;
+    }
+    
+    return xp.clamp(5, 100); // Min 5, max 100 XP per game
+  }
+  
+  Future<void> _checkAchievements(UserProvider userProvider) async {
+    final achievementService = AchievementService();
+    await achievementService.loadUserAchievements();
+    
+    final stats = userProvider.user?.stats;
+    if (stats == null) return;
+    
+    List<Achievement> newlyUnlocked = [];
+    
+    // Gameplay achievements
+    final gamesPlayed = stats.questionsAnswered ~/ 10; // Approximate
+    if (gamesPlayed >= 1) {
+      final unlocked = await achievementService.updateProgress('first_game', 1);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    if (gamesPlayed >= 10) {
+      final unlocked = await achievementService.updateProgress('play_10_games', gamesPlayed);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    if (gamesPlayed >= 50) {
+      final unlocked = await achievementService.updateProgress('play_50_games', gamesPlayed);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    
+    // Correct answers achievements
+    if (stats.correctAnswers >= 100) {
+      final unlocked = await achievementService.updateProgress(
+        'answer_100_questions',
+        stats.correctAnswers,
+      );
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    
+    // Perfect game achievement
+    final accuracy = widget.totalQuestions > 0 
+        ? widget.correctAnswers / widget.totalQuestions 
+        : 0.0;
+    if (accuracy >= 1.0) {
+      final unlocked = await achievementService.updateProgress('perfect_game', 1);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    
+    // Streak achievements
+    final streak = userProvider.user?.streakCount ?? 0;
+    if (streak >= 3) {
+      final unlocked = await achievementService.updateProgress('streak_3', streak);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    if (streak >= 7) {
+      final unlocked = await achievementService.updateProgress('streak_7', streak);
+      if (unlocked != null) newlyUnlocked.add(unlocked);
+    }
+    
+    // Award rewards for newly unlocked achievements
+    for (final achievement in newlyUnlocked) {
+      if (achievement.coinReward > 0) {
+        userProvider.addCoins(achievement.coinReward);
+      }
+      if (achievement.xpReward > 0) {
+        userProvider.addXP(achievement.xpReward);
+      }
+      
+      // Show celebration dialog
+      if (mounted) {
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => MilestoneCelebrationDialog(
+              achievement: achievement,
+              coinsAwarded: achievement.coinReward,
+              xpAwarded: achievement.xpReward,
+            ),
+          );
+        }
+      }
+    }
+  }
+  
+  Future<void> _checkWeeklyChallenges(UserProvider userProvider) async {
+    final weeklyService = WeeklyChallengeService();
+    await weeklyService.initialize();
+    
+    // Update challenge progress based on game results
+    if (widget.correctAnswers > 0) {
+      await weeklyService.updateProgress('correct_100_answers', widget.correctAnswers);
+    }
+    
+    final accuracy = widget.totalQuestions > 0 
+        ? widget.correctAnswers / widget.totalQuestions 
+        : 0.0;
+    if (accuracy >= 1.0) {
+      await weeklyService.updateProgress('perfect_5_games', 1);
+    }
+    
+    // Check for completed challenges
+    final completedChallenge = weeklyService.challenges.firstWhere(
+      (c) => c.isCompleted,
+      orElse: () => WeeklyChallenge(
+        id: '',
+        title: '',
+        description: '',
+        emoji: '',
+        targetValue: 0,
+      ),
+    );
+    
+    if (completedChallenge.id.isNotEmpty && mounted) {
+      userProvider.addCoins(completedChallenge.coinReward);
+      userProvider.addXP(completedChallenge.xpReward);
+    }
+  }
+
+  /// Update leaderboard with user's score
+  Future<void> _updateLeaderboard(UserProvider userProvider) async {
+    final user = userProvider.user;
+    if (user == null) return;
+
+    final modeProvider = context.read<ModeProvider>();
+    final isEducationMode = modeProvider.isEducationMode;
+    final leaderboardService = LeaderboardService();
+
+    // Determine category from widget.category
+    LeaderboardCategory category = LeaderboardCategory.all;
+    switch (widget.category.toLowerCase()) {
+      case 'math':
+        category = LeaderboardCategory.math;
+        break;
+      case 'science':
+        category = LeaderboardCategory.science;
+        break;
+      case 'history':
+        category = LeaderboardCategory.history;
+        break;
+      case 'geography':
+        category = LeaderboardCategory.geography;
+        break;
+      case 'literature':
+        category = LeaderboardCategory.literature;
+        break;
+      default:
+        category = LeaderboardCategory.mixed;
+    }
+
+    // Update all relevant leaderboards
+    await leaderboardService.updateUserScore(
+      userId: user.id,
+      username: user.username,
+      score: user.stats.totalScore, // Use total score, not just this game
+      level: user.level,
+      accuracy: user.stats.accuracy,
+      gamesPlayed: user.stats.questionsAnswered ~/ 10, // Approximate
+      isEducationMode: isEducationMode,
+      category: category,
+    );
+  }
+
+  /// Share score
+  Future<void> _shareScore() async {
+    final userProvider = context.read<UserProvider>();
+    final modeProvider = context.read<ModeProvider>();
+    final user = userProvider.user;
+    final accuracy = widget.totalQuestions > 0
+        ? widget.correctAnswers / widget.totalQuestions
+        : 0.0;
+
+    final sharingService = SocialSharingService();
+    await sharingService.shareScore(
+      score: widget.score,
+      correctAnswers: widget.correctAnswers,
+      totalQuestions: widget.totalQuestions,
+      accuracy: accuracy,
+      gameMode: widget.mode.toString().split('.').last,
+      username: user?.username,
+      isEducationMode: modeProvider.isEducationMode,
+    );
+  }
+
+  /// Check and unlock cards based on user progress
+  Future<void> _checkCardUnlocks(UserProvider userProvider) async {
+    final user = userProvider.user;
+    if (user == null) return;
+
+    final modeProvider = context.read<ModeProvider>();
+    final isEducationMode = modeProvider.isEducationMode;
+    final cardService = CardCollectionService();
+    await cardService.loadUserCards();
+
+    // Build category correct answers map (simplified - would need proper tracking)
+    final categoryCorrectAnswers = <CardCategory, int>{
+      CardCategory.math: 0, // TODO: Track per category
+      CardCategory.science: 0,
+      CardCategory.history: 0,
+      CardCategory.geography: 0,
+      CardCategory.literature: 0,
+    };
+
+    // Check card unlocks
+    await cardService.checkCardUnlocks(
+      categoryCorrectAnswers: categoryCorrectAnswers,
+      totalGames: user.stats.questionsAnswered ~/ 10,
+      streakDays: user.streakCount,
+      level: user.level,
+      hasPerfectGame: widget.correctAnswers == widget.totalQuestions,
+      isEducationMode: isEducationMode,
+    );
   }
 
   int _calculateCoinsEarned() {
@@ -723,6 +1024,35 @@ class _ResultsScreenState extends State<ResultsScreen>
                           Expanded(
                             child: SlideTransition(
                               position: _cardAnimations[2],
+                              child: SizedBox(
+                                height: 50,
+                                child: OutlinedButton.icon(
+                                  onPressed: () {
+                                    _shareScore();
+                                  },
+                                  icon: const Icon(Icons.share, size: 20),
+                                  label: const Text(
+                                    'Share',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppTheme.primaryNeon,
+                                    side: BorderSide(color: AppTheme.primaryNeon),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: SlideTransition(
+                              position: _cardAnimations[3],
                               child: SizedBox(
                                 height: 50,
                                 child: OutlinedButton.icon(
