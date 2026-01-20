@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/question.dart';
+import 'question_tracker_service.dart';
 
 /// Education Question Bank
 /// Supports questions organized by:
@@ -203,19 +204,40 @@ class EducationQuestionBank {
       debugPrint('📊 Found ${filteredQuestions.length} questions for grade $gradeLevel (any subject)');
     }
     
+    // Initialize question tracker and filter out used questions
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
+    filteredQuestions = tracker.filterUsedQuestions(filteredQuestions, (q) => q.id);
+    
     // Shuffle and return requested count
     filteredQuestions.shuffle(_random);
-    final result = filteredQuestions.take(count).toList();
-    debugPrint('✅ Returning ${result.length} questions');
+    
+    // Ensure no duplicates by ID
+    final uniqueQuestions = <String, Question>{};
+    for (final q in filteredQuestions) {
+      if (!uniqueQuestions.containsKey(q.id)) {
+        uniqueQuestions[q.id] = q;
+      }
+    }
+    final result = uniqueQuestions.values.take(count).toList();
+    
+    // Mark as used
+    if (result.isNotEmpty) {
+      tracker.markQuestionsAsUsed(result.map((q) => q.id).toList());
+    }
+    
+    debugPrint('✅ Returning ${result.length} unique questions');
     return result;
   }
   
   /// Get questions for education campaign round
   /// Campaign rounds rotate through subjects and progress through grades
+  /// IMPORTANT: Never falls back to different subjects - must match the round's subject
   static Future<List<Question>> getQuestionsForCampaignRound({
     required int roundNumber,
     required String gradeLevel,
     required String schoolSystem, // 'US', 'UK', 'GENERAL'
+    int questionCount = 10,
   }) async {
     try {
       await initialize();
@@ -241,12 +263,81 @@ class EducationQuestionBank {
     
     debugPrint('🎯 Campaign round $roundNumber: grade=$gradeLevel, subject=$subject, difficulty=$mappedDifficulty');
     
-    return getQuestions(
+    // For campaign rounds, we MUST match the subject - no fallback to other subjects
+    return getQuestionsForCampaign(
       gradeLevel: gradeLevel,
       subject: subject,
       difficulty: mappedDifficulty,
-      count: 10,
+      count: questionCount,
     );
+  }
+  
+  /// Get questions for campaign with strict subject matching (no subject fallback)
+  static Future<List<Question>> getQuestionsForCampaign({
+    required String gradeLevel,
+    required String subject,
+    String? difficulty,
+    int count = 10,
+  }) async {
+    try {
+      await initialize();
+    } catch (e) {
+      debugPrint('❌ Failed to initialize EducationQuestionBank in getQuestionsForCampaign: $e');
+      return [];
+    }
+    
+    if (_cachedQuestions == null || _cachedQuestions!.isEmpty) {
+      debugPrint('⚠️ No cached questions available');
+      return [];
+    }
+    
+    // Filter questions by grade level, subject, and optional difficulty
+    // IMPORTANT: Subject must match exactly - no fallback
+    var filteredQuestions = _cachedQuestions!.where((q) {
+      // Match grade level (exact match)
+      final gradeMatch = q.gradeLevel == gradeLevel;
+      
+      // Match subject (category) - MUST match exactly for campaign rounds
+      final subjectMatch = q.category == subject;
+      
+      // Match mode (should be EDUCATION_SCHOOL)
+      final modeMatch = q.mode == 'EDUCATION_SCHOOL' || q.mode == null;
+      
+      // Match difficulty if specified (case-insensitive, trimmed)
+      final difficultyMatch = difficulty == null || 
+          q.difficulty.toLowerCase().trim() == difficulty.toLowerCase().trim();
+      
+      return gradeMatch && subjectMatch && modeMatch && difficultyMatch;
+    }).toList();
+    
+    debugPrint('📊 Found ${filteredQuestions.length} questions matching all criteria (grade: $gradeLevel, subject: $subject, difficulty: $difficulty)');
+    
+    // If not enough questions, try without difficulty filter (but keep subject filter)
+    if (filteredQuestions.length < count && difficulty != null) {
+      debugPrint('⚠️ Not enough questions with difficulty filter, trying without difficulty (keeping subject: $subject)...');
+      filteredQuestions = _cachedQuestions!.where((q) {
+        return q.gradeLevel == gradeLevel && 
+               q.category == subject && // Keep subject filter!
+               (q.mode == 'EDUCATION_SCHOOL' || q.mode == null);
+      }).toList();
+      debugPrint('📊 Found ${filteredQuestions.length} questions without difficulty filter (subject: $subject)');
+    }
+    
+    // DO NOT fall back to other subjects for campaign rounds
+    // If we still don't have enough, return what we have (or empty if none)
+    if (filteredQuestions.isEmpty) {
+      debugPrint('⚠️ No questions found for grade=$gradeLevel, subject=$subject, difficulty=$difficulty');
+      debugPrint('⚠️ Campaign round requires exact subject match - cannot use other subjects');
+    }
+    
+    // Initialize question tracker and filter out used questions
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
+    filteredQuestions = tracker.filterUsedQuestions(filteredQuestions, (q) => q.id);
+    
+    // Shuffle and return requested count
+    filteredQuestions.shuffle(_random);
+    return filteredQuestions.take(count).toList();
   }
   
   /// Map campaign difficulty string to question bank difficulty

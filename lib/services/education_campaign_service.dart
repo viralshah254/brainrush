@@ -54,97 +54,140 @@ class EducationCampaignService extends ChangeNotifier {
   void _generateRounds() {
     _rounds.clear();
     
-    // Generate 500 rounds rotating through education subjects
-    for (int i = 1; i <= 500; i++) {
-      final difficulty = _getDifficultyForRound(i);
+    // Generate 300+ rounds (30+ chapters of 10 rounds each)
+    final totalRounds = 300;
+    final roundsPerChapter = 10;
+    
+    for (int i = 1; i <= totalRounds; i++) {
+      final chapterNumber = ((i - 1) ~/ roundsPerChapter) + 1;
+      final roundInChapter = ((i - 1) % roundsPerChapter) + 1;
+      
+      // Get random difficulty for this chapter (ensures mix within each chapter)
+      final difficulty = _getDifficultyForRoundInChapter(i, chapterNumber, roundInChapter);
+      
       // Rotate through subjects
       final subjectIndex = (i - 1) % educationSubjects.length;
       final category = educationSubjects[subjectIndex];
-      final questionCount = 10; // Fixed 10 questions per round
+      
+      // Random question count between 10-15
+      final questionCount = _getRandomQuestionCount(i);
+      
+      // Only round 1 is unlocked initially, rest unlock sequentially
+      final isLocked = i > 1; // Only round 1 is unlocked initially
       
       _rounds.add(CampaignRound(
         roundNumber: i,
-        title: _getRoundTitle(i, difficulty, category),
-        description: _getRoundDescription(i, category),
+        title: _getRoundTitle(i, difficulty, category, chapterNumber),
+        description: _getRoundDescription(i, category, chapterNumber),
         difficulty: difficulty,
         questionCount: questionCount,
         category: category,
         coinsReward: _getCoinsReward(difficulty),
         starsRequired: _getStarsRequired(i),
-        isLocked: i > 1, // First round unlocked
+        isLocked: isLocked,
         isCompleted: false,
       ));
     }
   }
-  
-  RoundDifficulty _getDifficultyForRound(int round) {
-    // Mixed difficulty progression: Easy -> Hard -> Medium -> Easy -> Hard -> Medium...
-    // Pattern repeats every 6 rounds: Easy, Hard, Medium, Easy, Hard, Medium
-    // This creates a varied experience with easy questions in between harder ones
+
+  int _getRandomQuestionCount(int roundNumber) {
+    // Use round number as seed for consistent randomness
+    // This ensures the same round always has the same question count
+    final seed = roundNumber * 7919; // Prime number for better distribution
+    final random = (seed % 6) + 10; // 10-15 questions
+    return random;
+  }
+
+  RoundDifficulty _getDifficultyForRoundInChapter(int roundNumber, int chapterNumber, int roundInChapter) {
+    // Each chapter (10 rounds) should have a random mix of difficulties
+    // Use chapter number as seed to ensure consistency
+    final chapterSeed = chapterNumber * 9973; // Prime for better distribution
     
-    // First 50 rounds: Mix of Easy, Medium, Hard (no super hard)
-    if (round <= 50) {
-      final patternIndex = (round - 1) % 6;
-      if (patternIndex == 0 || patternIndex == 3) return RoundDifficulty.easy;
-      if (patternIndex == 1 || patternIndex == 4) return RoundDifficulty.hard;
-      return RoundDifficulty.medium; // patternIndex == 2 or 5
+    // Create a list of difficulties for this chapter
+    // Each chapter should have a mix: 2-3 easy, 2-3 medium, 2-3 hard, 1-2 superHard
+    final difficulties = <RoundDifficulty>[];
+    
+    // Add 2-3 easy rounds
+    final easyCount = 2 + (chapterSeed % 2); // 2 or 3
+    for (int i = 0; i < easyCount; i++) {
+      difficulties.add(RoundDifficulty.easy);
     }
     
-    // Rounds 51-150: Mix Easy, Medium, Hard with occasional Super Hard
-    if (round <= 150) {
-      final patternIndex = (round - 1) % 8;
-      if (patternIndex == 0 || patternIndex == 4) return RoundDifficulty.easy;
-      if (patternIndex == 1 || patternIndex == 5) return RoundDifficulty.hard;
-      if (patternIndex == 2 || patternIndex == 6) return RoundDifficulty.medium;
-      return RoundDifficulty.superHard; // patternIndex == 3 or 7
+    // Add 2-3 medium rounds
+    final mediumCount = 2 + ((chapterSeed ~/ 10) % 2); // 2 or 3
+    for (int i = 0; i < mediumCount; i++) {
+      difficulties.add(RoundDifficulty.medium);
     }
     
-    // Rounds 151-300: More Super Hard, but still mixed
-    if (round <= 300) {
-      final patternIndex = (round - 1) % 10;
-      if (patternIndex == 0 || patternIndex == 5) return RoundDifficulty.easy;
-      if (patternIndex == 1 || patternIndex == 6) return RoundDifficulty.hard;
-      if (patternIndex == 2 || patternIndex == 7) return RoundDifficulty.medium;
-      return RoundDifficulty.superHard; // patternIndex == 3, 4, 8, or 9
+    // Add 2-3 hard rounds
+    final hardCount = 2 + ((chapterSeed ~/ 100) % 2); // 2 or 3
+    for (int i = 0; i < hardCount; i++) {
+      difficulties.add(RoundDifficulty.hard);
     }
     
-    // Rounds 301-500: Mostly Hard and Super Hard, with Easy breaks
-    final patternIndex = (round - 1) % 12;
-    if (patternIndex == 0 || patternIndex == 6) return RoundDifficulty.easy;
-    if (patternIndex == 1 || patternIndex == 2 || patternIndex == 7 || patternIndex == 8) {
-      return RoundDifficulty.hard;
+    // Add 1-2 superHard rounds (fill remaining slots to total 10)
+    final remaining = 10 - difficulties.length;
+    for (int i = 0; i < remaining; i++) {
+      difficulties.add(RoundDifficulty.superHard);
     }
-    if (patternIndex == 3 || patternIndex == 9) return RoundDifficulty.medium;
-    return RoundDifficulty.superHard; // patternIndex == 4, 5, 10, or 11
+    
+    // Shuffle the difficulties for this chapter using consistent seed-based shuffling
+    _shuffleWithSeed(difficulties, chapterSeed);
+    
+    // Return the difficulty for this specific round in the chapter
+    return difficulties[(roundInChapter - 1) % difficulties.length];
+  }
+
+  void _shuffleWithSeed(List<RoundDifficulty> list, int seed) {
+    // Simple seeded shuffle algorithm (Fisher-Yates with seed)
+    var random = seed;
+    for (int i = list.length - 1; i > 0; i--) {
+      random = (random * 1103515245 + 12345) & 0x7fffffff; // Linear congruential generator
+      final j = random % (i + 1);
+      final temp = list[i];
+      list[i] = list[j];
+      list[j] = temp;
+    }
   }
   
-  String _getRoundTitle(int round, RoundDifficulty difficulty, String subject) {
+  String _getRoundTitle(int round, RoundDifficulty difficulty, String subject, int chapterNumber) {
     if (round == 1) return '🎓 Welcome to $subject';
-    if (round == 10) return '🏆 $subject Milestone';
+    
+    // Chapter milestones
+    if (round % 10 == 1 && round > 1) {
+      return '📖 Chapter $chapterNumber - $subject';
+    }
+    
+    // Special chapter completions
+    if (round % 10 == 0) {
+      return '🏆 Chapter $chapterNumber Complete';
+    }
+    
+    // Special milestones
     if (round == 50) return '🔥 $subject Master';
     if (round == 100) return '💯 $subject Expert';
-    if (round == 250) return '⚡ $subject Champion';
-    if (round == 500) return '👑 $subject Legend';
+    if (round == 200) return '⚡ $subject Champion';
+    if (round == 300) return '👑 $subject Legend';
     
     // Special rounds every 25
     if (round % 25 == 0) return '🌟 $subject Checkpoint $round';
     
     return '$subject Round $round';
   }
-  
-  String _getRoundDescription(int round, String category) {
+
+  String _getRoundDescription(int round, String category, int chapterNumber) {
     final gradeDisplay = _getGradeDisplayName();
     
     if (round <= 10) {
-      return 'Master $category basics for $gradeDisplay';
+      return 'Chapter 1: Master $category basics for $gradeDisplay';
     } else if (round <= 50) {
-      return 'Building $category skills for $gradeDisplay';
+      return 'Chapter $chapterNumber: Building $category skills for $gradeDisplay';
     } else if (round <= 150) {
-      return 'Advanced $category challenges for $gradeDisplay';
-    } else if (round <= 300) {
-      return 'Expert $category mastery for $gradeDisplay';
+      return 'Chapter $chapterNumber: Advanced $category challenges for $gradeDisplay';
+    } else if (round <= 250) {
+      return 'Chapter $chapterNumber: Expert $category mastery for $gradeDisplay';
     } else {
-      return 'Legendary $category questions for $gradeDisplay';
+      return 'Chapter $chapterNumber: Legendary $category questions for $gradeDisplay';
     }
   }
   
@@ -197,21 +240,10 @@ class EducationCampaignService extends ChangeNotifier {
       _totalStars = _rounds.fold(0, (sum, r) => sum + (r.starsEarned ?? 0));
     }
     
-    // Unlock next round
+    // Unlock rounds sequentially: Round N+1 unlocks only when Round N is completed
+    // Always unlock just the next round
     if (index + 1 < _rounds.length) {
       _rounds[index + 1] = _rounds[index + 1].copyWith(isLocked: false);
-    }
-    
-    // Unlock next set of 10 rounds when completing round 10, 20, 30, etc.
-    if (roundNumber % 10 == 0 && roundNumber < _rounds.length) {
-      final nextSetStart = roundNumber + 1;
-      final nextSetEnd = (roundNumber + 10).clamp(0, _rounds.length);
-      for (int i = nextSetStart; i <= nextSetEnd && i <= _rounds.length; i++) {
-        final roundIndex = i - 1;
-        if (roundIndex < _rounds.length) {
-          _rounds[roundIndex] = _rounds[roundIndex].copyWith(isLocked: false);
-        }
-      }
     }
     
     // Update current round
@@ -244,6 +276,34 @@ class EducationCampaignService extends ChangeNotifier {
       if (roundsJson != null) {
         final roundsList = json.decode(roundsJson) as List<dynamic>;
         _rounds = roundsList.map((r) => CampaignRound.fromJson(r as Map<String, dynamic>)).toList();
+        
+        // Ensure rounds are properly locked based on sequential completion
+        // Round 1 is always unlocked
+        // Round N+1 unlocks only when Round N is completed
+        for (int i = 0; i < _rounds.length; i++) {
+          final round = _rounds[i];
+          final roundNumber = round.roundNumber;
+          
+          // Round 1 is always unlocked
+          if (roundNumber == 1) {
+            if (round.isLocked) {
+              _rounds[i] = round.copyWith(isLocked: false);
+            }
+          } else {
+            // For rounds beyond 1, check if the previous round is completed
+            final previousRoundNumber = roundNumber - 1;
+            final previousRound = _rounds.firstWhere(
+              (r) => r.roundNumber == previousRoundNumber,
+              orElse: () => _rounds.first,
+            );
+            
+            // Unlock this round only if the previous round is completed
+            final shouldBeUnlocked = previousRound.isCompleted;
+            if (round.isLocked != !shouldBeUnlocked) {
+              _rounds[i] = round.copyWith(isLocked: !shouldBeUnlocked);
+            }
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ Error loading education campaign progress: $e');

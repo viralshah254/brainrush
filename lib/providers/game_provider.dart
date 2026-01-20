@@ -51,18 +51,24 @@ class GameProvider extends ChangeNotifier {
         _questions = await ExpandedQuestionBank.getDailyChallengeQuestions(count: questionCount);
       } else {
         // Use regular QuestionBank for other modes
-        _questions = _questionBank.getQuestions(
+        _questions = await _questionBank.getQuestions(
           category: category,
           count: questionCount,
         );
       }
+      
+      // Ensure no duplicates in final list
+      _questions = _removeDuplicates(_questions);
+      
+      debugPrint('✅ Loaded ${_questions.length} unique questions for ${mode.toString()} mode');
     } catch (e) {
       debugPrint('❌ Error loading questions: $e');
       // Fallback to regular question bank
-      _questions = _questionBank.getQuestions(
+      _questions = await _questionBank.getQuestions(
         category: category,
         count: questionCount,
       );
+      _questions = _removeDuplicates(_questions);
     } finally {
       _isLoading = false;
       _currentQuestionIndex = 0;
@@ -87,18 +93,24 @@ class GameProvider extends ChangeNotifier {
         _questions = await ExpandedQuestionBank.getDailyChallengeQuestions(count: questionCount);
       } else {
         // Use regular QuestionBank for other modes
-        _questions = _questionBank.getMixedQuestions(
+        _questions = await _questionBank.getMixedQuestions(
           categories: categories,
           count: questionCount,
         );
       }
+      
+      // Ensure no duplicates in final list
+      _questions = _removeDuplicates(_questions);
+      
+      debugPrint('✅ Loaded ${_questions.length} unique questions for mixed ${mode.toString()} mode');
     } catch (e) {
       debugPrint('❌ Error loading mixed questions: $e');
       // Fallback to regular question bank
-      _questions = _questionBank.getMixedQuestions(
+      _questions = await _questionBank.getMixedQuestions(
         categories: categories,
         count: questionCount,
       );
+      _questions = _removeDuplicates(_questions);
     } finally {
       _isLoading = false;
       _currentQuestionIndex = 0;
@@ -143,6 +155,25 @@ class GameProvider extends ChangeNotifier {
     _score = 0;
     _correctAnswers = 0;
     notifyListeners();
+  }
+
+  /// Remove duplicate questions by ID
+  List<Question> _removeDuplicates(List<Question> questions) {
+    final seen = <String>{};
+    final unique = <Question>[];
+    
+    for (final question in questions) {
+      if (!seen.contains(question.id)) {
+        seen.add(question.id);
+        unique.add(question);
+      }
+    }
+    
+    if (unique.length != questions.length) {
+      debugPrint('⚠️ Removed ${questions.length - unique.length} duplicate questions');
+    }
+    
+    return unique;
   }
 
   double get accuracy => _questions.isEmpty 

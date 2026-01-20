@@ -1,5 +1,6 @@
 import 'dart:math';
 import '../models/question.dart';
+import 'question_tracker_service.dart';
 
 class QuestionBank {
   static final QuestionBank _instance = QuestionBank._internal();
@@ -248,33 +249,86 @@ class QuestionBank {
   };
 
   /// Get random questions for a category
-  List<Question> getQuestions({
+  /// Ensures no duplicates within the returned list
+  Future<List<Question>> getQuestions({
     required String category,
     required int count,
-  }) {
+  }) async {
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
+    
     final categoryQuestions = _questions[category] ?? [];
     if (categoryQuestions.isEmpty) {
       // Fallback to all questions if category not found
       final allQuestions = _questions.values.expand((q) => q).toList();
-      allQuestions.shuffle(_random);
-      return allQuestions.take(count).toList();
+      // Filter out used questions
+      final unused = tracker.filterUsedQuestions(allQuestions, (q) => q.id);
+      unused.shuffle(_random);
+      final selected = unused.take(count).toList();
+      // Mark as used
+      if (selected.isNotEmpty) {
+        tracker.markQuestionsAsUsed(selected.map((q) => q.id).toList());
+      }
+      return selected;
     }
 
-    final shuffled = List<Question>.from(categoryQuestions)..shuffle(_random);
-    return shuffled.take(count).toList();
+    // Filter out used questions
+    final unused = tracker.filterUsedQuestions(categoryQuestions, (q) => q.id);
+    final shuffled = List<Question>.from(unused)..shuffle(_random);
+    final selected = shuffled.take(count).toList();
+    
+    // Ensure no duplicates by ID
+    final uniqueSelected = <String, Question>{};
+    for (final q in selected) {
+      if (!uniqueSelected.containsKey(q.id)) {
+        uniqueSelected[q.id] = q;
+      }
+    }
+    final finalSelected = uniqueSelected.values.toList();
+    
+    // Mark as used
+    if (finalSelected.isNotEmpty) {
+      tracker.markQuestionsAsUsed(finalSelected.map((q) => q.id).toList());
+    }
+    
+    return finalSelected;
   }
 
   /// Get questions for multiple categories (for mixed mode)
-  List<Question> getMixedQuestions({
+  /// Ensures no duplicates within the returned list
+  Future<List<Question>> getMixedQuestions({
     required List<String> categories,
     required int count,
-  }) {
+  }) async {
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
+    
     final allQuestions = <Question>[];
     for (final category in categories) {
       allQuestions.addAll(_questions[category] ?? []);
     }
-    allQuestions.shuffle(_random);
-    return allQuestions.take(count).toList();
+    
+    // Filter out used questions
+    final unused = tracker.filterUsedQuestions(allQuestions, (q) => q.id);
+    unused.shuffle(_random);
+    
+    // Ensure no duplicates by ID
+    final uniqueSelected = <String, Question>{};
+    for (final q in unused.take(count * 2)) { // Take more to ensure we have enough unique
+      if (uniqueSelected.length >= count) break;
+      if (!uniqueSelected.containsKey(q.id)) {
+        uniqueSelected[q.id] = q;
+      }
+    }
+    
+    final finalSelected = uniqueSelected.values.toList();
+    
+    // Mark as used
+    if (finalSelected.isNotEmpty) {
+      tracker.markQuestionsAsUsed(finalSelected.map((q) => q.id).toList());
+    }
+    
+    return finalSelected;
   }
 
   /// Get all available categories

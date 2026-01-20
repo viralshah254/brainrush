@@ -8,6 +8,7 @@ import '../../services/room_service.dart';
 import '../../services/question_service.dart';
 import '../../services/expanded_question_bank.dart';
 import '../../services/education_question_bank.dart';
+import '../../services/question_tracker_service.dart';
 import '../../providers/user_provider.dart';
 import 'multiplayer_results_screen.dart';
 
@@ -145,9 +146,15 @@ class _MultiplayerGameScreenState extends State<MultiplayerGameScreen>
         );
       }
 
-      // Filter out questions already used in previous rounds
+      // Initialize question tracker
+      final tracker = QuestionTrackerService();
+      await tracker.initialize();
+      
+      // Filter out questions already used in previous rounds (both local and persistent)
       final availableQuestions = allQuestions
-          .where((q) => !_usedQuestionIds.contains(q.id))
+          .where((q) => 
+              !_usedQuestionIds.contains(q.id) &&
+              !tracker.isQuestionUsed(q.id))
           .toList();
 
       // Get mapped difficulty for filtering (if not random)
@@ -223,9 +230,18 @@ class _MultiplayerGameScreenState extends State<MultiplayerGameScreen>
         
         // Shuffle and take the required number
         difficultyQuestions.shuffle(_random);
-        _currentRoundQuestions = difficultyQuestions.take(_questionsPerRound).toList();
         
-        debugPrint('✅ Selected ${_currentRoundQuestions.length} questions for round');
+        // Ensure no duplicates by ID
+        final uniqueQuestions = <String, Question>{};
+        for (final q in difficultyQuestions) {
+          if (uniqueQuestions.length >= _questionsPerRound) break;
+          if (!uniqueQuestions.containsKey(q.id)) {
+            uniqueQuestions[q.id] = q;
+          }
+        }
+        _currentRoundQuestions = uniqueQuestions.values.toList();
+        
+        debugPrint('✅ Selected ${_currentRoundQuestions.length} unique questions for round');
         if (_currentRoundQuestions.isNotEmpty) {
           final actualDifficulties = _currentRoundQuestions
               .map((q) => q.difficulty)
@@ -234,11 +250,22 @@ class _MultiplayerGameScreenState extends State<MultiplayerGameScreen>
           debugPrint('📊 Actual difficulties in round: ${actualDifficulties.join(", ")}');
         }
       }
-
-      // Mark these questions as used
-      for (final question in _currentRoundQuestions) {
-        _usedQuestionIds.add(question.id);
+      
+      // Ensure no duplicates in final list
+      final finalUnique = <String, Question>{};
+      for (final q in _currentRoundQuestions) {
+        if (!finalUnique.containsKey(q.id)) {
+          finalUnique[q.id] = q;
+        }
       }
+      _currentRoundQuestions = finalUnique.values.toList();
+
+      // Mark these questions as used (both locally and in tracker)
+      final questionIds = _currentRoundQuestions.map((q) => q.id).toList();
+      for (final questionId in questionIds) {
+        _usedQuestionIds.add(questionId);
+      }
+      tracker.markQuestionsAsUsed(questionIds);
 
       // Track in QuestionService to prevent showing in other game modes
       for (final question in _currentRoundQuestions) {

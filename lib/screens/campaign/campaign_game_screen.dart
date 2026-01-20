@@ -10,6 +10,8 @@ import '../../services/question_service.dart';
 import '../../services/campaign_service.dart';
 import '../../services/expanded_question_bank.dart';
 import '../../services/education_question_bank.dart';
+import '../../services/question_tracker_service.dart';
+import '../../services/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../models/question.dart';
 import '../../models/campaign_round.dart';
@@ -48,6 +50,8 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
   Set<int> _triedWrongOptions = {}; // Track wrong attempts for retry highlighting
   bool _isLoading = true;
   String? _loadingError;
+  bool _showHint = false; // Track if hint is shown
+  DateTime? _roundStartTime; // Track when round started for timeSpent calculation
 
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
@@ -92,6 +96,9 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadQuestions();
     });
+    
+    // Track round start time
+    _roundStartTime = DateTime.now();
   }
 
   Future<void> _loadQuestions() async {
@@ -105,6 +112,7 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
           roundNumber: widget.round.roundNumber,
           gradeLevel: widget.gradeLevel!,
           schoolSystem: _getSchoolSystemFromGrade(widget.gradeLevel!),
+          questionCount: widget.round.questionCount, // Use the round's question count (10-15)
         );
         debugPrint('✅ Loaded ${questions.length} education questions');
         
@@ -145,10 +153,11 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
       } else {
         // Use Expanded Question Bank for normal campaign
         // Pass the round's category to ensure correct subject matching
-        debugPrint('🎮 Loading questions for campaign round ${widget.round.roundNumber}, category: ${widget.round.category}');
+        debugPrint('🎮 Loading questions for campaign round ${widget.round.roundNumber}, category: ${widget.round.category}, count: ${widget.round.questionCount}');
         questions = await ExpandedQuestionBank.getQuestionsForRound(
           widget.round.roundNumber,
           category: widget.round.category, // Use the round's actual category
+          questionCount: widget.round.questionCount, // Use the round's question count (10-15)
         );
         
         debugPrint('✅ Loaded ${questions.length} questions for campaign round ${widget.round.roundNumber}');
@@ -163,15 +172,33 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
 
       // Remove duplicates by question ID to ensure no repeated questions
       final uniqueQuestions = <String, Question>{};
+      final seenIds = <String>{};
+      int duplicateCount = 0;
+      
       for (final question in questions) {
-        if (!uniqueQuestions.containsKey(question.id)) {
-          uniqueQuestions[question.id] = question;
+        if (seenIds.contains(question.id)) {
+          duplicateCount++;
+          debugPrint('⚠️ Found duplicate question ID: ${question.id}');
+          continue; // Skip duplicate
         }
+        seenIds.add(question.id);
+        uniqueQuestions[question.id] = question;
       }
+      
       final deduplicatedQuestions = uniqueQuestions.values.toList();
+      
+      // Mark questions as used immediately to prevent reuse
+      if (deduplicatedQuestions.isNotEmpty) {
+        final tracker = QuestionTrackerService();
+        await tracker.initialize();
+        final questionIds = deduplicatedQuestions.map((q) => q.id).toList();
+        tracker.markQuestionsAsUsed(questionIds);
+        debugPrint('✅ Marked ${questionIds.length} questions as used for round ${widget.round.roundNumber}');
+      }
       
       // If we have fewer questions after deduplication, log a warning
       if (deduplicatedQuestions.length < questions.length) {
+        debugPrint('❌ WARNING: Removed $duplicateCount duplicate questions from round ${widget.round.roundNumber}');
         debugPrint('⚠️ Removed ${questions.length - deduplicatedQuestions.length} duplicate questions');
       }
       
@@ -623,18 +650,50 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     _timerController.forward(from: 0.0);
   }
 
-  void _finishRound() {
+  void _finishRound() async {
     final maxScore = _questions.length * (widget.round.difficulty.baseScore + 75); // Max time bonus
     
     // Calculate stars earned
     final starsEarned = CampaignRound.calculateStars(_score, maxScore);
     
-    // Complete the round
+    // Calculate time spent in seconds
+    final timeSpent = _roundStartTime != null
+        ? DateTime.now().difference(_roundStartTime!).inSeconds
+        : 0;
+    
+    // Convert roundNumber to roundId (string)
+    final roundId = widget.round.roundNumber.toString();
+    
+    // Complete the round locally first
     context.read<CampaignService>().completeRound(
       roundNumber: widget.round.roundNumber,
       score: _score,
       maxScore: maxScore,
     );
+
+    // Send scores to backend
+    try {
+      debugPrint('📤 Sending campaign round completion to backend...');
+      debugPrint('   Round ID: $roundId');
+      debugPrint('   Score: $_score');
+      debugPrint('   Correct Answers: $_correctAnswers');
+      debugPrint('   Total Questions: ${_questions.length}');
+      debugPrint('   Time Spent: ${timeSpent}s');
+      
+      final api = ApiService();
+      await api.campaign.completeRound(
+        roundId: roundId,
+        score: _score,
+        correctAnswers: _correctAnswers,
+        totalQuestions: _questions.length,
+        timeSpent: timeSpent,
+      );
+      
+      debugPrint('✅ Campaign round completion saved to backend');
+    } catch (e) {
+      debugPrint('⚠️ Failed to save campaign round completion to backend: $e');
+      // Continue with local completion even if backend fails
+    }
 
     // Calculate coins reward based on stars and accuracy
     final accuracy = (_correctAnswers / _questions.length) * 100;
@@ -875,15 +934,94 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        question.text,
-                        style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
+                      // Question text with hint button
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              question.text,
+                              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                          // Hint button
+                          if (!_answered && question.hint != null && question.hint!.isNotEmpty)
+                            IconButton(
+                              icon: Icon(
+                                _showHint ? Icons.lightbulb : Icons.lightbulb_outline,
+                                color: AppTheme.accentNeon,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showHint = !_showHint;
+                                });
+                              },
+                              tooltip: 'Show hint',
+                            ),
+                        ],
                       ),
+                      // Learning Objective (if available)
+                      if (question.learningObjective != null && question.learningObjective!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentNeon.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.school, size: 16, color: AppTheme.accentNeon),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    question.learningObjective!,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.accentNeon.withOpacity(0.9),
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      // Hint display
+                      if (_showHint && question.hint != null && question.hint!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentNeon.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.accentNeon.withOpacity(0.3)),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(Icons.lightbulb, size: 20, color: AppTheme.accentNeon),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    question.hint!,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: AppTheme.accentNeon,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                       const SizedBox(height: 30),
                       // Options
                       ...question.options.asMap().entries.map((entry) {
@@ -926,19 +1064,43 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                                     width: 2,
                                   ),
                                 ),
-                                child: Row(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(
-                                      child: Text(
-                                        option,
-                                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                          color: Colors.white,
-                                          decoration: isDisabled ? TextDecoration.lineThrough : null,
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            option,
+                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                              color: Colors.white,
+                                              decoration: isDisabled ? TextDecoration.lineThrough : null,
+                                            ),
+                                          ),
+                                        ),
+                                        if (isDisabled)
+                                          const Icon(Icons.block, color: Colors.red, size: 20),
+                                        if (_answered && index == question.correctIndex)
+                                          const Icon(Icons.check_circle, color: Colors.green, size: 20),
+                                        if (_answered && index == _selectedIndex && index != question.correctIndex)
+                                          const Icon(Icons.cancel, color: Colors.red, size: 20),
+                                      ],
+                                    ),
+                                    // Show whyWrong explanation when answered
+                                    if (_answered && question.whyWrong != null && question.getWhyWrong(index) != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8),
+                                        child: Text(
+                                          question.getWhyWrong(index)!,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: index == question.correctIndex
+                                                ? Colors.green.withOpacity(0.9)
+                                                : Colors.red.withOpacity(0.9),
+                                            fontStyle: FontStyle.italic,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    if (isDisabled)
-                                      const Icon(Icons.block, color: Colors.red, size: 20),
                                   ],
                                 ),
                               ),
@@ -962,20 +1124,52 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  'Explanation:',
-                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                    color: AppTheme.accentNeon,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                                Row(
+                                  children: [
+                                    Icon(
+                                      _isCorrect ? Icons.check_circle : Icons.info,
+                                      color: _isCorrect ? Colors.green : Colors.orange,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _isCorrect ? 'Correct!' : 'Not quite!',
+                                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        color: _isCorrect ? Colors.green : Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 12),
+                                // Use bestExplanation (prefers deepExplanation, falls back to shortExplanation or legacy explanation)
                                 Text(
-                                  question.explanation,
+                                  question.bestExplanation,
                                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                     color: Colors.white70,
+                                    height: 1.5,
                                   ),
                                 ),
+                                // Show question type if available
+                                if (question.questionType != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 12),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryNeon.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Type: ${question.questionType}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: AppTheme.primaryNeon,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                               ],
                             ),
                           ),

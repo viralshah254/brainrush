@@ -79,31 +79,97 @@ class _CampaignScreenState extends State<CampaignScreen>
       
       if (allRounds.isEmpty) return;
       
-      // Calculate which set of 10 rounds to show
+      // Calculate which set of 10 rounds to show (same logic as build functions)
       final currentSet = ((currentRound - 1) ~/ 10) + 1;
       final startRound = ((currentSet - 1) * 10) + 1;
       final endRound = currentSet * 10;
       
-      // Find the latest unlocked round in the current set
-      int targetRoundNumber = currentRound.clamp(startRound, endRound);
-      for (final round in allRounds) {
-        if (round.roundNumber >= startRound && round.roundNumber <= endRound) {
-          if (round.roundNumber > currentRound && round.isLocked) {
-            // Found first locked round, scroll to the round before it (latest unlocked)
-            targetRoundNumber = round.roundNumber - 1;
-            break;
-          } else if (round.roundNumber >= currentRound && !round.isLocked) {
+      // Find the latest completed round - this is what we should scroll to
+      // Priority: 1) Latest completed round, 2) Latest unlocked uncompleted, 3) Current round if unlocked
+      int targetRoundNumber = -1;
+      
+      // First priority: Find the latest completed round in the current set
+      for (final round in allRounds.reversed) {
+        if (round.roundNumber >= startRound && 
+            round.roundNumber <= endRound && 
+            round.isCompleted) {
+          targetRoundNumber = round.roundNumber;
+          break;
+        }
+      }
+      
+      // Second priority: If no completed round, find the latest unlocked round that is NOT completed
+      if (targetRoundNumber == -1) {
+        for (final round in allRounds.reversed) {
+          if (round.roundNumber >= startRound && 
+              round.roundNumber <= endRound && 
+              !round.isLocked && 
+              !round.isCompleted) {
             targetRoundNumber = round.roundNumber;
+            break;
           }
         }
       }
       
-      // Find the index of the target round in visible rounds (current set of 10)
-      final visibleRounds = allRounds
-          .where((r) => r.roundNumber >= startRound && r.roundNumber <= endRound)
+      // Third priority: Find the latest unlocked round (even if completed)
+      if (targetRoundNumber == -1) {
+        for (final round in allRounds.reversed) {
+          if (round.roundNumber >= startRound && 
+              round.roundNumber <= endRound && 
+              !round.isLocked) {
+            targetRoundNumber = round.roundNumber;
+            break;
+          }
+        }
+      }
+      
+      // Final fallback: use startRound (beginning of set)
+      if (targetRoundNumber == -1) {
+        targetRoundNumber = startRound;
+      }
+      
+      // Debug: print what we're scrolling to
+      debugPrint('🎯 Scrolling to round $targetRoundNumber (currentRound: $currentRound, set: $startRound-$endRound)');
+      
+      // Get all completed rounds
+      final completedRounds = allRounds.where((r) => r.isCompleted).toList();
+      
+      // Get rounds in the current set (including locked ones)
+      final currentSetRounds = allRounds
+          .where((r) => 
+              r.roundNumber >= startRound && 
+              r.roundNumber <= endRound)
           .toList();
       
-      final targetIndex = visibleRounds.indexWhere((r) => r.roundNumber == targetRoundNumber);
+      // Combine completed rounds with current set rounds, removing duplicates by round number
+      final allVisibleRoundsMap = <int, CampaignRound>{};
+      for (final round in completedRounds) {
+        allVisibleRoundsMap[round.roundNumber] = round;
+      }
+      for (final round in currentSetRounds) {
+        allVisibleRoundsMap[round.roundNumber] = round;
+      }
+      
+      // Sort by round number
+      final visibleRounds = allVisibleRoundsMap.values.toList()
+        ..sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
+      
+      int targetIndex = visibleRounds.indexWhere((r) => r.roundNumber == targetRoundNumber);
+      
+      // If target not found, try to find the latest unlocked round in visible rounds
+      if (targetIndex == -1) {
+        // Find the latest unlocked round in visible rounds
+        for (int i = visibleRounds.length - 1; i >= 0; i--) {
+          if (!visibleRounds[i].isLocked) {
+            targetIndex = i;
+            break;
+          }
+        }
+        // If still not found, use first round
+        if (targetIndex == -1) {
+          targetIndex = 0;
+        }
+      }
       
       if (targetIndex == -1 || targetIndex == 0) {
         // If target is first round or not found, scroll to top
@@ -331,40 +397,92 @@ class _CampaignScreenState extends State<CampaignScreen>
   }
 
   Widget _buildRoundsList(CampaignService service) {
-    // Show only 10 rounds at a time
-    // Calculate which set of 10 rounds to show based on current round
-    final currentSet = ((service.currentRound - 1) ~/ 10) + 1; // Which set of 10 (1, 2, 3, etc.)
+    // Show rounds in smart sets: show all completed rounds + current set of 10 (including locked)
+    // Get all completed rounds
+    final completedRounds = List<CampaignRound>.from(
+      service.rounds.where((r) => r.isCompleted)
+    );
+    
+    // Calculate which set of 10 contains the current round
+    // Round 1-10 = set 1, Round 11-20 = set 2, Round 21-30 = set 3, etc.
+    final currentSet = ((service.currentRound - 1) ~/ 10) + 1;
     final startRound = ((currentSet - 1) * 10) + 1;
     final endRound = currentSet * 10;
     
-    final visibleRounds = service.rounds
-        .where((r) => r.roundNumber >= startRound && r.roundNumber <= endRound)
-        .toList();
+    // Get rounds in the current set (including locked ones)
+    final currentSetRounds = List<CampaignRound>.from(
+      service.rounds.where((r) => 
+        r.roundNumber >= startRound && 
+        r.roundNumber <= endRound)
+    );
     
-    // Check if we need to show unlock message
-    final isLastSet = endRound >= 500;
+    // Combine completed rounds with current set rounds, removing duplicates by round number
+    final allVisibleRoundsMap = <int, CampaignRound>{};
+    for (final round in completedRounds) {
+      allVisibleRoundsMap[round.roundNumber] = round;
+    }
+    for (final round in currentSetRounds) {
+      allVisibleRoundsMap[round.roundNumber] = round;
+    }
+    
+    // Sort by round number
+    final visibleRounds = allVisibleRoundsMap.values.toList()
+      ..sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
+    
+    // Check if we need to show unlock message (if we've reached the end)
+    final isLastSet = endRound >= service.rounds.length;
     final showUnlockMessage = service.currentRound > endRound - 1 && !isLastSet;
+    
+    // Calculate total child count (rounds + unlock message if needed)
+    final totalChildCount = visibleRounds.length + (showUnlockMessage ? 1 : 0);
+    
+    // Ensure we have a valid list before building
+    if (visibleRounds.isEmpty && !showUnlockMessage) {
+      return const SliverPadding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverToBoxAdapter(
+          child: SizedBox.shrink(),
+        ),
+      );
+    }
 
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
+            // Validate index before accessing
+            if (index < 0 || index >= totalChildCount) {
+              return const SizedBox.shrink();
+            }
+            
             // Show unlock message after rounds if needed
-            if (index == visibleRounds.length && showUnlockMessage) {
+            if (showUnlockMessage && index == visibleRounds.length) {
               return _buildUnlockMessage(endRound + 1, endRound + 10);
             }
             
-            if (index >= visibleRounds.length) return const SizedBox.shrink();
+            // Safety check: ensure index is valid for rounds
+            if (index < 0 || index >= visibleRounds.length) {
+              return const SizedBox.shrink();
+            }
             
             final round = visibleRounds[index];
+            
+            // Calculate animation intervals, ensuring they don't exceed 1.0
+            // Distribute animations across the available range (0.0 to 1.0)
+            final totalItems = visibleRounds.length;
+            final maxAnimatedItems = totalItems.clamp(1, 20); // Limit to 20 items for smooth animation
+            final normalizedIndex = index.clamp(0, maxAnimatedItems - 1);
+            final start = (normalizedIndex / maxAnimatedItems).clamp(0.0, 0.9);
+            final end = ((normalizedIndex + 1) / maxAnimatedItems).clamp(0.1, 1.0);
+            
             return FadeTransition(
               opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
                 CurvedAnimation(
                   parent: _animationController,
                   curve: Interval(
-                    index * 0.05,
-                    (index * 0.05) + 0.5,
+                    start,
+                    end,
                     curve: Curves.easeOut,
                   ),
                 ),
@@ -377,8 +495,8 @@ class _CampaignScreenState extends State<CampaignScreen>
                   CurvedAnimation(
                     parent: _animationController,
                     curve: Interval(
-                      index * 0.05,
-                      (index * 0.05) + 0.5,
+                      start,
+                      end,
                       curve: Curves.easeOut,
                     ),
                   ),
@@ -387,7 +505,7 @@ class _CampaignScreenState extends State<CampaignScreen>
               ),
             );
           },
-          childCount: visibleRounds.length + (showUnlockMessage ? 1 : 0),
+          childCount: totalChildCount,
         ),
       ),
     );
@@ -829,40 +947,92 @@ class _CampaignScreenState extends State<CampaignScreen>
   }
 
   Widget _buildEducationRoundsList(EducationCampaignService service) {
-    // Show only 10 rounds at a time
-    // Calculate which set of 10 rounds to show based on current round
-    final currentSet = ((service.currentRound - 1) ~/ 10) + 1; // Which set of 10 (1, 2, 3, etc.)
+    // Show rounds in smart sets: show all completed rounds + current set of 10 (including locked)
+    // Get all completed rounds
+    final completedRounds = List<CampaignRound>.from(
+      service.rounds.where((r) => r.isCompleted)
+    );
+    
+    // Calculate which set of 10 contains the current round
+    // Round 1-10 = set 1, Round 11-20 = set 2, Round 21-30 = set 3, etc.
+    final currentSet = ((service.currentRound - 1) ~/ 10) + 1;
     final startRound = ((currentSet - 1) * 10) + 1;
     final endRound = currentSet * 10;
     
-    final visibleRounds = service.rounds
-        .where((r) => r.roundNumber >= startRound && r.roundNumber <= endRound)
-        .toList();
+    // Get rounds in the current set (including locked ones)
+    final currentSetRounds = List<CampaignRound>.from(
+      service.rounds.where((r) => 
+        r.roundNumber >= startRound && 
+        r.roundNumber <= endRound)
+    );
+    
+    // Combine completed rounds with current set rounds, removing duplicates by round number
+    final allVisibleRoundsMap = <int, CampaignRound>{};
+    for (final round in completedRounds) {
+      allVisibleRoundsMap[round.roundNumber] = round;
+    }
+    for (final round in currentSetRounds) {
+      allVisibleRoundsMap[round.roundNumber] = round;
+    }
+    
+    // Sort by round number
+    final visibleRounds = allVisibleRoundsMap.values.toList()
+      ..sort((a, b) => a.roundNumber.compareTo(b.roundNumber));
     
     // Check if we need to show unlock message
     final isLastSet = endRound >= service.rounds.length;
     final showUnlockMessage = service.currentRound > endRound - 1 && !isLastSet;
+    
+    // Calculate total child count (rounds + unlock message if needed)
+    final totalChildCount = visibleRounds.length + (showUnlockMessage ? 1 : 0);
+
+    // Ensure we have a valid list before building
+    if (visibleRounds.isEmpty && !showUnlockMessage) {
+      return const SliverPadding(
+        padding: EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverToBoxAdapter(
+          child: SizedBox.shrink(),
+        ),
+      );
+    }
 
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) {
+            // Validate index before accessing
+            if (index < 0 || index >= totalChildCount) {
+              return const SizedBox.shrink();
+            }
+            
             // Show unlock message after rounds if needed
-            if (index == visibleRounds.length && showUnlockMessage) {
+            if (showUnlockMessage && index == visibleRounds.length) {
               return _buildUnlockMessage(endRound + 1, endRound + 10);
             }
             
-            if (index >= visibleRounds.length) return const SizedBox.shrink();
+            // Safety check: ensure index is valid for rounds
+            if (index < 0 || index >= visibleRounds.length) {
+              return const SizedBox.shrink();
+            }
             
             final round = visibleRounds[index];
+            
+            // Calculate animation intervals, ensuring they don't exceed 1.0
+            // Distribute animations across the available range (0.0 to 1.0)
+            final totalItems = visibleRounds.length;
+            final maxAnimatedItems = totalItems.clamp(1, 20); // Limit to 20 items for smooth animation
+            final normalizedIndex = index.clamp(0, maxAnimatedItems - 1);
+            final start = (normalizedIndex / maxAnimatedItems).clamp(0.0, 0.9);
+            final end = ((normalizedIndex + 1) / maxAnimatedItems).clamp(0.1, 1.0);
+            
             return FadeTransition(
               opacity: Tween<double>(begin: 0.0, end: 1.0).animate(
                 CurvedAnimation(
                   parent: _animationController,
                   curve: Interval(
-                    index * 0.05,
-                    (index * 0.05) + 0.5,
+                    start,
+                    end,
                     curve: Curves.easeOut,
                   ),
                 ),
@@ -875,8 +1045,8 @@ class _CampaignScreenState extends State<CampaignScreen>
                   CurvedAnimation(
                     parent: _animationController,
                     curve: Interval(
-                      index * 0.05,
-                      (index * 0.05) + 0.5,
+                      start,
+                      end,
                       curve: Curves.easeOut,
                     ),
                   ),
@@ -885,7 +1055,7 @@ class _CampaignScreenState extends State<CampaignScreen>
               ),
             );
           },
-          childCount: visibleRounds.length + (showUnlockMessage ? 1 : 0),
+          childCount: totalChildCount,
         ),
       ),
     );

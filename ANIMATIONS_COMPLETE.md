@@ -268,3 +268,34 @@ All animations are responsive and work on:
 **Status:** ✅ COMPLETE  
 **Quality:** 🌟🌟🌟🌟🌟
 
+00000
+### **Frontend Changes Required:**
+
+1. **Create API Client Service**
+   - Create `lib/services/api_client.dart`
+   - Handle base URL configuration
+   - Handle response wrapper (`success`, `data`, `error`)
+   - Handle JWT token management
+   - Handle refresh token flow
+   - Handle error responses
+
+2. **Update All Service Files**
+   - Replace SharedPreferences with API calls
+   - Update all services to use API client
+   - Handle response wrapper extraction
+   - Handle error cases
+
+3. **Response Format Handling**
+   - All API responses must extract `data` from wrapper
+   - Handle `success: false` error cases
+   - Parse error codes and messages
+
+4. **Authentication Flow**
+   - Store JWT tokens securely
+   - Implement token refresh logic
+   - Handle token expiration
+
+5. **Base URL Configuration**
+   - Create environment-based config
+   - Development: `http://localhost:3000/api/v1`
+   - Production: `https://api.mindrush.com/api/v1`

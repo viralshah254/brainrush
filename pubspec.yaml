@@ -2,7 +2,7 @@ name: mindrush
 description: "MindRush — Play smarter. Learn faster."
 publish_to: 'none'
 
-version: 1.0.3+13
+version: 1.0.14+14
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -27,6 +27,8 @@ dependencies:
   shared_preferences: ^2.2.2
   http: ^1.1.0
   uuid: ^4.2.1
+  socket_io_client: ^2.0.3+1
+  connectivity_plus: ^6.0.5
   
   # Ads & Monetization
   google_mobile_ads: ^5.2.0

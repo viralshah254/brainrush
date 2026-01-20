@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/question.dart';
 import 'question_service.dart';
+import 'question_tracker_service.dart';
 
 /// Expanded question bank with 5000+ questions across 10 subjects and 4 difficulty levels
 /// This supports 500 campaign rounds with 10 questions each (5000 question instances with rotation)
@@ -42,9 +43,14 @@ class ExpandedQuestionBank {
   }
   
   /// Get questions for a specific campaign round
-  static Future<List<Question>> getQuestionsForRound(int roundNumber, {String? category}) async {
+  /// Ensures no duplicates within the round or from previous rounds
+  static Future<List<Question>> getQuestionsForRound(int roundNumber, {String? category, int questionCount = 10}) async {
     // Ensure initialized
     await initialize();
+    
+    // Initialize question tracker
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
     
     final subjects = [
       'General Knowledge',
@@ -69,14 +75,168 @@ class ExpandedQuestionBank {
     
     debugPrint('🎯 Campaign Round $roundNumber: Looking for questions with subject="$subject", difficulty="$mappedDifficulty"');
     
-    final questions = await getQuestionsBySubjectAndDifficulty(subject, mappedDifficulty, count: 10);
+    // Get more questions than needed to filter out used ones
+    // IMPORTANT: excludeUsed=true ensures we don't get previously used questions
+    var questions = await getQuestionsBySubjectAndDifficulty(
+      subject, 
+      mappedDifficulty, 
+      count: 200, // Get many more to ensure we have enough after filtering
+      excludeUsed: true,
+    );
     
-    debugPrint('✅ Found ${questions.length} questions for Round $roundNumber (subject: $subject, difficulty: $mappedDifficulty)');
-    if (questions.isNotEmpty) {
-      debugPrint('📝 Sample question category: ${questions.first.category}');
+    debugPrint('📊 After getQuestionsBySubjectAndDifficulty: ${questions.length} questions available');
+    
+    // CRITICAL: Remove ALL duplicates from the pool FIRST (by ID)
+    final uniquePoolMap = <String, Question>{};
+    for (final q in questions) {
+      if (!uniquePoolMap.containsKey(q.id)) {
+        uniquePoolMap[q.id] = q;
+      }
+    }
+    questions = uniquePoolMap.values.toList();
+    
+    if (questions.length < uniquePoolMap.length) {
+      debugPrint('⚠️ Removed ${uniquePoolMap.length - questions.length} duplicate questions from initial pool');
     }
     
-    return questions;
+    // Double-check: filter out any used questions that might have slipped through
+    questions = tracker.filterUsedQuestions(questions, (q) => q.id);
+    debugPrint('📊 After tracker filter: ${questions.length} unused questions available');
+    
+    // Track whether we're allowing reuse
+    bool allowingReuse = false;
+    
+    // If we don't have enough unused questions, we need to allow reuse
+    // Allow reuse if we have less than the required count
+    // Also allow reuse after round 10 to prevent running out of questions
+    final shouldAllowReuse = questions.length < questionCount || roundNumber > 10;
+    
+    if (shouldAllowReuse) {
+      debugPrint('⚠️ Only ${questions.length} unused questions available (need $questionCount). Allowing reuse of questions.');
+      debugPrint('📊 Round $roundNumber: Allowing question reuse');
+      allowingReuse = true;
+      // Get all questions again (including previously used ones) by setting excludeUsed=false
+      var allQuestions = await getQuestionsBySubjectAndDifficulty(
+        subject, 
+        mappedDifficulty, 
+        count: 200,
+        excludeUsed: false, // Allow reuse
+      );
+      
+      // Remove duplicates from the full pool
+      final allUniqueMap = <String, Question>{};
+      for (final q in allQuestions) {
+        if (!allUniqueMap.containsKey(q.id)) {
+          allUniqueMap[q.id] = q;
+        }
+      }
+      questions = allUniqueMap.values.toList();
+      debugPrint('📊 After allowing reuse: ${questions.length} unique questions available');
+      
+      // If still not enough, try without difficulty filter
+      if (questions.length < questionCount) {
+        debugPrint('⚠️ Still not enough questions. Trying without difficulty filter...');
+        final allCategoryQuestions = _getAllQuestions()
+            .where((q) => q.category == subject)
+            .toList();
+        
+        final categoryUniqueMap = <String, Question>{};
+        for (final q in allCategoryQuestions) {
+          if (!categoryUniqueMap.containsKey(q.id)) {
+            categoryUniqueMap[q.id] = q;
+          }
+        }
+        questions = categoryUniqueMap.values.toList();
+        debugPrint('📊 After removing difficulty filter: ${questions.length} unique questions available');
+      }
+      
+      // Final fallback: if still not enough, use any questions from any category
+      if (questions.length < questionCount) {
+        debugPrint('⚠️ CRITICAL: Still not enough questions. Using questions from any category as fallback...');
+        final allQuestions = _getAllQuestions();
+        final allUniqueMap = <String, Question>{};
+        for (final q in allQuestions) {
+          if (!allUniqueMap.containsKey(q.id)) {
+            allUniqueMap[q.id] = q;
+          }
+        }
+        questions = allUniqueMap.values.toList();
+        debugPrint('📊 Fallback: ${questions.length} total unique questions available');
+      }
+    }
+    
+    // Now select the requested number of unique questions
+    final selectedQuestions = <Question>[];
+    final usedIdsInRound = <String>{}; // Track IDs used in THIS round
+    
+    // Shuffle to randomize selection
+    questions.shuffle(_random);
+    
+    for (final question in questions) {
+      if (selectedQuestions.length >= questionCount) break;
+      
+      // CRITICAL: Check BOTH round-level AND tracker-level to ensure no duplicates
+      final questionId = question.id;
+      
+      // Skip if already used in this round
+      if (usedIdsInRound.contains(questionId)) {
+        continue;
+      }
+      
+      // Skip if already used in tracker UNLESS we're allowing reuse
+      if (!allowingReuse && tracker.isQuestionUsed(questionId)) {
+        continue; // Skip this question
+      }
+      
+      // Add to selection
+      selectedQuestions.add(question);
+      usedIdsInRound.add(questionId);
+    }
+    
+    // FINAL VERIFICATION: Ensure absolutely no duplicates
+    final finalUniqueMap = <String, Question>{};
+    final finalSelected = <Question>[];
+    for (final q in selectedQuestions) {
+      if (!finalUniqueMap.containsKey(q.id)) {
+        finalUniqueMap[q.id] = q;
+        finalSelected.add(q);
+      }
+    }
+    
+    if (finalSelected.length != selectedQuestions.length) {
+      final allIds = selectedQuestions.map((q) => q.id).toList();
+      final duplicateIds = <String>{};
+      for (var i = 0; i < allIds.length; i++) {
+        for (var j = i + 1; j < allIds.length; j++) {
+          if (allIds[i] == allIds[j]) {
+            duplicateIds.add(allIds[i]);
+          }
+        }
+      }
+      debugPrint('❌ CRITICAL: Found ${selectedQuestions.length - finalSelected.length} duplicates in final selection!');
+      debugPrint('   Duplicate IDs: ${duplicateIds.join(", ")}');
+    }
+    
+    debugPrint('✅ Selected ${finalSelected.length} unique questions for round $roundNumber');
+    debugPrint('   Question IDs: ${finalSelected.map((q) => q.id).join(", ")}');
+    
+    // Mark these questions as used IMMEDIATELY after selection
+    if (finalSelected.isNotEmpty) {
+      final questionIds = finalSelected.map((q) => q.id).toList();
+      
+      // Verify all IDs are unique before marking
+      final uniqueIds = questionIds.toSet();
+      if (uniqueIds.length != questionIds.length) {
+        debugPrint('❌ ERROR: Attempting to mark duplicate IDs as used!');
+        questionIds.clear();
+        questionIds.addAll(uniqueIds);
+      }
+      
+      tracker.markQuestionsAsUsed(questionIds);
+      debugPrint('✅ Marked ${questionIds.length} questions as used in tracker');
+    }
+    
+    return finalSelected;
   }
   
   /// Map campaign difficulty string to question bank difficulty
@@ -91,9 +251,14 @@ class ExpandedQuestionBank {
   /// Get daily challenge questions - same set for the entire day
   /// Uses day-based seed to ensure consistency across app restarts
   /// Questions are randomly selected from ALL questions in the bank
+  /// Ensures no duplicates within the set
   static Future<List<Question>> getDailyChallengeQuestions({int count = 10}) async {
     // Ensure initialized
     await initialize();
+    
+    // Initialize question tracker
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
     
     // Get or set current day
     final dayNumber = await _getCurrentDayNumber();
@@ -110,6 +275,7 @@ class ExpandedQuestionBank {
     // Select questions ensuring variety across categories and difficulties
     final selectedQuestions = <Question>[];
     final usedIndices = <int>{};
+    final usedQuestionIds = <String>{}; // Track by ID to prevent duplicates
     
     // Try to get a balanced mix: 2-3 easy, 3-4 medium, 2-3 hard, 1-2 very_hard
     final difficultyTargets = [
@@ -130,24 +296,33 @@ class ExpandedQuestionBank {
           ? difficultyTargets[i] 
           : ['easy', 'medium', 'hard', 'very_hard'][dayRandom.nextInt(4)];
       
-      // Find questions matching target difficulty
+      // Find questions matching target difficulty that haven't been used
       final matchingQuestions = shuffledQuestions
-          .where((q) => q.difficulty == targetDifficulty && !usedIndices.contains(shuffledQuestions.indexOf(q)))
+          .where((q) => 
+              q.difficulty == targetDifficulty && 
+              !usedIndices.contains(shuffledQuestions.indexOf(q)) &&
+              !usedQuestionIds.contains(q.id)) // Ensure no duplicate IDs
           .toList();
       
       if (matchingQuestions.isNotEmpty) {
         final selected = matchingQuestions[dayRandom.nextInt(matchingQuestions.length)];
         selectedQuestions.add(selected);
-        usedIndices.add(shuffledQuestions.indexOf(selected));
+        final index = shuffledQuestions.indexOf(selected);
+        usedIndices.add(index);
+        usedQuestionIds.add(selected.id); // Track by ID
       } else {
-        // Fallback: pick any unused question
+        // Fallback: pick any unused question (by index and ID)
         final availableQuestions = shuffledQuestions
-            .where((q) => !usedIndices.contains(shuffledQuestions.indexOf(q)))
+            .where((q) => 
+                !usedIndices.contains(shuffledQuestions.indexOf(q)) &&
+                !usedQuestionIds.contains(q.id))
             .toList();
         if (availableQuestions.isNotEmpty) {
           final selected = availableQuestions[dayRandom.nextInt(availableQuestions.length)];
           selectedQuestions.add(selected);
-          usedIndices.add(shuffledQuestions.indexOf(selected));
+          final index = shuffledQuestions.indexOf(selected);
+          usedIndices.add(index);
+          usedQuestionIds.add(selected.id);
         }
       }
     }
@@ -155,12 +330,29 @@ class ExpandedQuestionBank {
     // If we still don't have enough, fill with any remaining questions
     while (selectedQuestions.length < count && selectedQuestions.length < allQuestions.length) {
       final remaining = shuffledQuestions
-          .where((q) => !usedIndices.contains(shuffledQuestions.indexOf(q)))
+          .where((q) => 
+              !usedIndices.contains(shuffledQuestions.indexOf(q)) &&
+              !usedQuestionIds.contains(q.id))
           .toList();
       if (remaining.isEmpty) break;
       final selected = remaining[dayRandom.nextInt(remaining.length)];
       selectedQuestions.add(selected);
-      usedIndices.add(shuffledQuestions.indexOf(selected));
+      final index = shuffledQuestions.indexOf(selected);
+      usedIndices.add(index);
+      usedQuestionIds.add(selected.id);
+    }
+    
+    // Verify no duplicates in final list
+    final finalIds = selectedQuestions.map((q) => q.id).toSet();
+    if (finalIds.length != selectedQuestions.length) {
+      debugPrint('⚠️ Found duplicates in daily challenge questions, removing...');
+      final uniqueQuestions = <String, Question>{};
+      for (final q in selectedQuestions) {
+        if (!uniqueQuestions.containsKey(q.id)) {
+          uniqueQuestions[q.id] = q;
+        }
+      }
+      return uniqueQuestions.values.toList();
     }
     
     return selectedQuestions;
@@ -201,17 +393,22 @@ class ExpandedQuestionBank {
   
   /// Get questions filtered by subject and difficulty
   /// Handles both "very_hard" and "super_hard" (maps super_hard to very_hard)
-  /// Excludes already answered questions
+  /// Excludes already answered questions and used questions
   static Future<List<Question>> getQuestionsBySubjectAndDifficulty(
     String subject,
     String difficulty, {
     int count = 10,
+    bool excludeUsed = true,
   }) async {
     // Ensure initialized (will use hardcoded if not initialized)
     if (!_isInitialized) {
       _cachedQuestions = _getHardcodedQuestions();
       _isInitialized = true;
     }
+    
+    // Initialize question tracker
+    final tracker = QuestionTrackerService();
+    await tracker.initialize();
     
     // Get answered questions for this category
     final questionService = QuestionService(); // Singleton factory
@@ -233,6 +430,11 @@ class ExpandedQuestionBank {
              (normalizedDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
         .toList();
     
+    // Filter out used questions if requested
+    if (excludeUsed) {
+      filteredQuestions = tracker.filterUsedQuestions(filteredQuestions, (q) => q.id);
+    }
+    
     // If not enough questions of exact difficulty, mix with adjacent difficulties
     if (filteredQuestions.length < count) {
       final adjacentDifficulty = _getAdjacentDifficulty(normalizedDifficulty);
@@ -240,6 +442,7 @@ class ExpandedQuestionBank {
           .where((q) => 
               q.category == subject && 
               !answeredIds.contains(q.id) &&
+              (excludeUsed ? !tracker.isQuestionUsed(q.id) : true) &&
               (q.difficulty == adjacentDifficulty ||
                (adjacentDifficulty == 'very_hard' && q.difficulty == 'super_hard') ||
                (adjacentDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
@@ -250,7 +453,10 @@ class ExpandedQuestionBank {
     // If still not enough, get any unanswered questions from this subject
     if (filteredQuestions.length < count) {
       final anyQuestions = allQuestions
-          .where((q) => q.category == subject && !answeredIds.contains(q.id))
+          .where((q) => 
+              q.category == subject && 
+              !answeredIds.contains(q.id) &&
+              (excludeUsed ? !tracker.isQuestionUsed(q.id) : true))
           .toList();
       filteredQuestions.addAll(anyQuestions);
     }
@@ -263,11 +469,21 @@ class ExpandedQuestionBank {
       filteredQuestions = allQuestions
           .where((q) => 
               q.category == subject && 
+              (excludeUsed ? !tracker.isQuestionUsed(q.id) : true) &&
               (q.difficulty == normalizedDifficulty || 
                (normalizedDifficulty == 'very_hard' && q.difficulty == 'super_hard') ||
                (normalizedDifficulty == 'super_hard' && q.difficulty == 'very_hard')))
           .toList();
     }
+    
+    // Remove duplicates by ID
+    final uniqueQuestions = <String, Question>{};
+    for (final q in filteredQuestions) {
+      if (!uniqueQuestions.containsKey(q.id)) {
+        uniqueQuestions[q.id] = q;
+      }
+    }
+    filteredQuestions = uniqueQuestions.values.toList();
     
     filteredQuestions.shuffle(_random);
     return filteredQuestions.take(count).toList();

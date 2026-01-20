@@ -145,20 +145,20 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
                   _buildCardCollectionCard(context),
                   const SizedBox(height: 24),
 
-                  // Premium Banner (if not premium)
-                  Consumer<PremiumService>(
-                    builder: (context, premiumService, _) {
-                      if (!premiumService.isPremium) {
-                        return Column(
-                          children: [
-                            _buildPremiumBanner(context),
-                            const SizedBox(height: 24),
-                          ],
-                        );
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
+                  // Premium Banner (hidden for now)
+                  // Consumer<PremiumService>(
+                  //   builder: (context, premiumService, _) {
+                  //     if (!premiumService.isPremium) {
+                  //       return Column(
+                  //         children: [
+                  //           _buildPremiumBanner(context),
+                  //           const SizedBox(height: 24),
+                  //         ],
+                  //       );
+                  //     }
+                  //     return const SizedBox.shrink();
+                  //   },
+                  // ),
 
                   // Settings Section
                   Text(
@@ -683,68 +683,69 @@ class _ProfileScreenState extends State<ProfileScreen> with WidgetsBindingObserv
     );
   }
 
-  Widget _buildPremiumBanner(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const PremiumScreen()),
-        );
-      },
-      child: Container(
-        padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purple.shade700, Colors.purple.shade500],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.purple.withOpacity(0.3),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.star, color: Colors.white, size: 24),
-        ),
-        const SizedBox(width: 16),
-            Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                    AppLocalizations.of(context)?.play ?? 'Go Premium!',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                ),
-              ),
-              Text(
-                    '${AppLocalizations.of(context)?.freeCoins ?? 'Ad-free'} from \$3.99/month',
-                style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.white70,
-                ),
-              ),
-            ],
-          ),
-        ),
-            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
+  // Premium Banner (hidden for now)
+  // Widget _buildPremiumBanner(BuildContext context) {
+  //   return GestureDetector(
+  //     onTap: () {
+  //       Navigator.push(
+  //         context,
+  //         MaterialPageRoute(builder: (_) => const PremiumScreen()),
+  //       );
+  //     },
+  //     child: Container(
+  //       padding: const EdgeInsets.all(16),
+  //         decoration: BoxDecoration(
+  //         gradient: LinearGradient(
+  //           colors: [Colors.purple.shade700, Colors.purple.shade500],
+  //         ),
+  //         borderRadius: BorderRadius.circular(16),
+  //         boxShadow: [
+  //           BoxShadow(
+  //             color: Colors.purple.withOpacity(0.3),
+  //             blurRadius: 12,
+  //             offset: const Offset(0, 4),
+  //           ),
+  //         ],
+  //       ),
+  //       child: Row(
+  //         children: [
+  //           Container(
+  //             padding: const EdgeInsets.all(10),
+  //             decoration: BoxDecoration(
+  //               color: Colors.white.withOpacity(0.2),
+  //               shape: BoxShape.circle,
+  //             ),
+  //             child: const Icon(Icons.star, color: Colors.white, size: 24),
+  //       ),
+  //       const SizedBox(width: 16),
+  //           Expanded(
+  //         child: Column(
+  //           crossAxisAlignment: CrossAxisAlignment.start,
+  //           children: [
+  //             Text(
+  //                   AppLocalizations.of(context)?.play ?? 'Go Premium!',
+  //               style: const TextStyle(
+  //                 fontSize: 16,
+  //                 fontWeight: FontWeight.bold,
+  //                     color: Colors.white,
+  //               ),
+  //             ),
+  //             Text(
+  //                   '${AppLocalizations.of(context)?.freeCoins ?? 'Ad-free'} from \$3.99/month',
+  //               style: TextStyle(
+  //                     fontSize: 13,
+  //                     color: Colors.white70,
+  //               ),
+  //             ),
+  //           ],
+  //         ),
+  //       ),
+  //           const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 20),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildSettingsCard(BuildContext context, bool isSignedIn) {
     return Container(

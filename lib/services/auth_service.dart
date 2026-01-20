@@ -5,6 +5,8 @@ import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'api/auth_api_service.dart';
+import 'api_client.dart' show ApiClient, ApiException;
 
 /// Comprehensive authentication service supporting multiple providers
 class AuthService {
@@ -14,6 +16,34 @@ class AuthService {
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final AuthApiService _authApi = AuthApiService();
+
+  /// Sanitize display name to create a valid username
+  /// Backend requires: 3-20 chars, alphanumeric + underscore only
+  String _sanitizeUsername(String displayName) {
+    // Remove all non-alphanumeric characters except underscores
+    String sanitized = displayName.replaceAll(RegExp(r'[^a-zA-Z0-9_]'), '');
+    
+    // Replace spaces with underscores
+    sanitized = sanitized.replaceAll(' ', '_');
+    
+    // Ensure it starts with a letter or number (not underscore)
+    if (sanitized.isEmpty || sanitized.startsWith('_')) {
+      sanitized = 'user_$sanitized';
+    }
+    
+    // Ensure minimum length of 3
+    if (sanitized.length < 3) {
+      sanitized = '${sanitized}_${DateTime.now().millisecondsSinceEpoch.toString().substring(0, 3)}';
+    }
+    
+    // Truncate to max 20 characters
+    if (sanitized.length > 20) {
+      sanitized = sanitized.substring(0, 20);
+    }
+    
+    return sanitized;
+  }
 
   /// Get current user
   User? get currentUser => _auth.currentUser;
@@ -257,7 +287,7 @@ class AuthService {
   }
   
   /// Sign up with email and password
-  /// Saves user info to SharedPreferences (frontend-only for now)
+  /// Saves user info to SharedPreferences and syncs with backend
   Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
@@ -268,7 +298,7 @@ class AuthService {
       
       final prefs = await SharedPreferences.getInstance();
       
-      // Check if user already exists
+      // Check if user already exists locally
       final existingUsers = prefs.getStringList('registered_users') ?? [];
       if (existingUsers.contains(email.toLowerCase())) {
         throw Exception('An account with this email already exists');
@@ -277,7 +307,7 @@ class AuthService {
       // Generate user ID
       final userId = 'user_${DateTime.now().millisecondsSinceEpoch}';
       
-      // Save user info to SharedPreferences
+      // Save user info to SharedPreferences (local fallback)
       await prefs.setString('user_${email.toLowerCase()}_email', email);
       await prefs.setString('user_${email.toLowerCase()}_password', password); // In production, hash this
       await prefs.setString('user_${email.toLowerCase()}_name', displayName);
@@ -296,6 +326,66 @@ class AuthService {
       
       debugPrint('✅ Email sign up successful (saved to SharedPreferences)');
       debugPrint('✅ User ID: $userId');
+      
+      // Try to sync with backend API
+      try {
+        debugPrint('🌐 Syncing with backend...');
+        
+        // Sanitize username to meet backend requirements (3-20 chars, alphanumeric + underscore)
+        final sanitizedUsername = _sanitizeUsername(displayName);
+        
+        debugPrint('📤 Sending signup request:');
+        debugPrint('   - Email: $email');
+        debugPrint('   - Display Name: $displayName');
+        debugPrint('   - Username (sanitized): $sanitizedUsername');
+        debugPrint('   - Provider: EMAIL');
+        
+        // Ensure ApiClient is initialized
+        await ApiClient().initialize();
+        
+        // Call backend API
+        // Note: Backend requires provider to be uppercase: 'EMAIL', 'GOOGLE', 'FACEBOOK', 'APPLE'
+        final response = await _authApi.signUp(
+          email: email,
+          username: sanitizedUsername,
+          password: password,
+          provider: 'EMAIL', // Backend expects uppercase
+        );
+        
+        debugPrint('✅ Backend sign up successful');
+        debugPrint('📦 Response: $response');
+        
+        // Update local user ID with backend user ID if provided
+        if (response['user'] != null && response['user']['id'] != null) {
+          final backendUserId = response['user']['id'] as String;
+          await prefs.setString('user_${email.toLowerCase()}_id', backendUserId);
+          await prefs.setString('local_user_id', backendUserId);
+          debugPrint('✅ Updated User ID from backend: $backendUserId');
+        }
+        
+      } catch (backendError) {
+        // Log detailed backend error but don't fail the signup (local signup succeeded)
+        if (backendError is ApiException) {
+          debugPrint('⚠️ Backend sync failed:');
+          debugPrint('   Error Code: ${backendError.error.code}');
+          debugPrint('   Error Message: ${backendError.error.message}');
+          if (backendError.error.validationErrors != null) {
+            debugPrint('   Validation Errors:');
+            for (final error in backendError.error.validationErrors!) {
+              final path = error['path'] as List?;
+              final field = path != null && path.isNotEmpty ? path.join('.') : 'unknown';
+              final message = error['message'] ?? 'Validation error';
+              debugPrint('     - $field: $message');
+            }
+          } else if (backendError.error.field != null) {
+            debugPrint('   Field: ${backendError.error.field}');
+          }
+          debugPrint('   Status Code: ${backendError.statusCode}');
+        } else {
+          debugPrint('⚠️ Backend sync failed (continuing with local signup): $backendError');
+        }
+        // You might want to queue this for retry later
+      }
       
       // Return null since we're not using Firebase, but the signup screen will handle it
       return null;

@@ -40,6 +40,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
   bool _extraTimeUsed = false; // Track if extra time ad has been used for current question
+  bool _showHint = false; // Track if hint is shown
 
   @override
   void initState() {
@@ -565,14 +566,96 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: AppTheme.primaryNeon.withOpacity(0.3)),
                     ),
-                    child: Text(
-                      question.text,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                      textAlign: TextAlign.center,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                question.text,
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            // Hint button
+                            if (!_answered && question.hint != null && question.hint!.isNotEmpty)
+                              IconButton(
+                                icon: Icon(
+                                  _showHint ? Icons.lightbulb : Icons.lightbulb_outline,
+                                  color: AppTheme.accentNeon,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _showHint = !_showHint;
+                                  });
+                                },
+                                tooltip: 'Show hint',
+                              ),
+                          ],
+                        ),
+                        // Learning Objective (if available)
+                        if (question.learningObjective != null && question.learningObjective!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentNeon.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.school, size: 16, color: AppTheme.accentNeon),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      question.learningObjective!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: AppTheme.accentNeon.withOpacity(0.9),
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        // Hint display
+                        if (_showHint && question.hint != null && question.hint!.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentNeon.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppTheme.accentNeon.withOpacity(0.3)),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.lightbulb, size: 20, color: AppTheme.accentNeon),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      question.hint!,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppTheme.accentNeon,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -610,39 +693,59 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                               borderRadius: BorderRadius.circular(12),
                               border: Border.all(color: borderColor, width: 2),
                             ),
-                            child: Row(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 40,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: borderColor, width: 2),
-                                  ),
-                                  child: Center(
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: borderColor, width: 2),
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          String.fromCharCode(65 + index), // A, B, C, D
+                                          style: TextStyle(
+                                            color: borderColor,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 16),
+                                    Expanded(
+                                      child: Text(
+                                        question.options[index],
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    if (_answered && isCorrectOption)
+                                      const Icon(Icons.check_circle, color: Colors.green),
+                                    if (_answered && isSelected && !isCorrectOption)
+                                      const Icon(Icons.cancel, color: Colors.red),
+                                  ],
+                                ),
+                                // Show whyWrong explanation when answered
+                                if (_answered && question.whyWrong != null && question.getWhyWrong(index) != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8, left: 56),
                                     child: Text(
-                                      String.fromCharCode(65 + index), // A, B, C, D
+                                      question.getWhyWrong(index)!,
                                       style: TextStyle(
-                                        color: borderColor,
-                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                        color: isCorrectOption 
+                                            ? Colors.green.withOpacity(0.9)
+                                            : Colors.red.withOpacity(0.9),
+                                        fontStyle: FontStyle.italic,
                                       ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Text(
-                                    question.options[index],
-                                    style: const TextStyle(
-                                      fontSize: 16,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                if (_answered && isCorrectOption)
-                                  const Icon(Icons.check_circle, color: Colors.green),
-                                if (_answered && isSelected && !isCorrectOption)
-                                  const Icon(Icons.cancel, color: Colors.red),
                               ],
                             ),
                           ),
@@ -660,6 +763,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                             ? Colors.green.withOpacity(0.1) 
                             : Colors.orange.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: (_isCorrect ? Colors.green : Colors.orange).withOpacity(0.3),
+                        ),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -681,14 +787,36 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
+                          // Use bestExplanation (prefers deepExplanation, falls back to shortExplanation or legacy explanation)
                           Text(
-                            question.explanation,
+                            question.bestExplanation,
                             style: const TextStyle(
                               fontSize: 14,
                               color: Colors.white70,
+                              height: 1.5,
                             ),
                           ),
+                          // Show question type if available
+                          if (question.questionType != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryNeon.withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Type: ${question.questionType}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppTheme.primaryNeon,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

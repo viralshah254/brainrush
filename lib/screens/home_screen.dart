@@ -1056,8 +1056,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     cards.add(_buildDailyEducationCard(context, gradeDisplay, isSmallScreen: isSmallScreen));
     cards.add(SizedBox(height: spacing));
     
-    // Education Campaign (only for high school age)
-    if (!isBeyondHighSchool && user?.gradeLevel != null) {
+    // Education Campaign (available for all students with a grade level)
+    if (user?.gradeLevel != null) {
       cards.add(_buildEducationCampaignCard(context, user!.gradeLevel!));
       cards.add(SizedBox(height: spacing));
     }
