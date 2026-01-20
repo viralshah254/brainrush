@@ -274,3 +274,4 @@ class MyScreen extends StatelessWidget {
 
 **Next**: Run `flutter pub get` and start updating screens to use `AppLocalizations.of(context)` for all user-facing text!
 
+

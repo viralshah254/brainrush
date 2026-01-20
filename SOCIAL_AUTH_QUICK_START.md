@@ -89,3 +89,4 @@ See `SOCIAL_AUTH_SETUP.md` for:
 **Bottom Line**: Email auth works perfectly right now. Social logins just need you to add your app credentials from Firebase, Apple, and Facebook developer consoles (15 min setup).
 
 
+

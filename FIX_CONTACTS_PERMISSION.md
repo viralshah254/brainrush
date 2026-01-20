@@ -111,3 +111,4 @@ These logs will help identify where the issue is.
 **Action Required**: Clean rebuild of iOS app  
 **Expected Result**: Permission dialog appears and works correctly ✅
 
+

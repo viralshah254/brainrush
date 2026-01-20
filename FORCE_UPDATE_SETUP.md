@@ -244,3 +244,4 @@ Your app now has a **complete force update system** that:
 
 **To enable force update**, simply set `force_update_enabled: true` in Firebase Remote Config! 🚀
 
+

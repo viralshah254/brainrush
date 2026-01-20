@@ -151,3 +151,4 @@ if __name__ == '__main__':
     exit_code = validate_education_questions(json_file)
     sys.exit(exit_code)
 
+

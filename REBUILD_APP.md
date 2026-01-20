@@ -176,3 +176,4 @@ cd /Users/v/Desktop/Apps/mind_rush/mind_rush && flutter clean && rm -rf ios/Pods
 **Bottom Line**: Stop the app, run the commands above, and do a fresh build. The channel error will be gone! 🚀
 
 
+
