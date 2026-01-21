@@ -179,3 +179,4 @@ cd /Users/v/Desktop/Apps/mind_rush/mind_rush && flutter clean && rm -rf ios/Pods
 
 
 
+
