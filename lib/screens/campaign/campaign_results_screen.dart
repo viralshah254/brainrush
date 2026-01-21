@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../models/campaign_round.dart';
 import '../../models/daily_quest.dart';
 import '../../services/campaign_service.dart';
+import '../../services/education_campaign_service.dart';
 import '../../services/ad_service.dart';
 import '../../services/premium_service.dart';
 import '../../services/retention_service.dart';
@@ -22,6 +23,8 @@ class CampaignResultsScreen extends StatefulWidget {
   final int correctAnswers;
   final int totalQuestions;
   final int coinsEarned;
+  final bool isEducationMode;
+  final String? gradeLevel;
 
   const CampaignResultsScreen({
     super.key,
@@ -30,6 +33,8 @@ class CampaignResultsScreen extends StatefulWidget {
     required this.correctAnswers,
     required this.totalQuestions,
     required this.coinsEarned,
+    this.isEducationMode = false,
+    this.gradeLevel,
   });
 
   @override
@@ -212,10 +217,29 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
 
   @override
   Widget build(BuildContext context) {
-    final campaignService = context.watch<CampaignService>();
     final userProvider = context.watch<UserProvider>();
-    final nextRound = campaignService.getRound(widget.round.roundNumber + 1);
     final accuracy = (widget.correctAnswers / widget.totalQuestions * 100).toStringAsFixed(1);
+    
+    // Get next round based on mode
+    CampaignRound? nextRound;
+    if (widget.isEducationMode && widget.gradeLevel != null) {
+      final educationService = context.watch<EducationCampaignService>();
+      try {
+        nextRound = educationService.rounds.firstWhere(
+          (r) => r.roundNumber == widget.round.roundNumber + 1,
+        );
+        // Check if the round is not locked
+        if (nextRound.isLocked) {
+          nextRound = null;
+        }
+      } catch (e) {
+        // Round doesn't exist
+        nextRound = null;
+      }
+    } else {
+      final campaignService = context.watch<CampaignService>();
+      nextRound = campaignService.getRound(widget.round.roundNumber + 1);
+    }
 
     // Check if user ran out of coins AFTER game ended
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -413,7 +437,11 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
                                     context,
                                     PageRouteBuilder(
                                       pageBuilder: (context, animation, secondaryAnimation) =>
-                                          CampaignGameScreen(round: nextRound),
+                                          CampaignGameScreen(
+                                        round: nextRound!,
+                                        isEducationMode: widget.isEducationMode,
+                                        gradeLevel: widget.gradeLevel,
+                                      ),
                                       transitionsBuilder: (context, animation, secondaryAnimation, child) {
                                         return SlideTransition(
                                           position: Tween<Offset>(
@@ -501,7 +529,11 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
                                   Navigator.pushReplacement(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) => CampaignGameScreen(round: widget.round),
+                                      builder: (_) => CampaignGameScreen(
+                                        round: widget.round,
+                                        isEducationMode: widget.isEducationMode,
+                                        gradeLevel: widget.gradeLevel,
+                                      ),
                                     ),
                                   );
                                 },
@@ -514,11 +546,41 @@ class _CampaignResultsScreenState extends State<CampaignResultsScreen>
                                 label: 'Map',
                                 color: Colors.white70,
                                 onPressed: () {
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => const CampaignScreen()),
-                                    (route) => false,
-                                  );
+                                  if (widget.isEducationMode && widget.gradeLevel != null) {
+                                    // Navigate to education map and scroll to next round
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => CampaignScreen(
+                                          isEducationMode: true,
+                                          gradeLevel: widget.gradeLevel,
+                                          shouldScrollToNextRound: true,
+                                        ),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  } else {
+                                    Navigator.pushAndRemoveUntil(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (_) => const CampaignScreen(
+                                          shouldScrollToNextRound: true,
+                                        ),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildActionButton(
+                                icon: Icons.home,
+                                label: 'Home',
+                                color: AppTheme.primaryNeon,
+                                onPressed: () {
+                                  Navigator.of(context).popUntil((route) => route.isFirst);
                                 },
                               ),
                             ),

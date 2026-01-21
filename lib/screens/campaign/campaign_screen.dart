@@ -14,11 +14,13 @@ import 'campaign_game_screen.dart';
 class CampaignScreen extends StatefulWidget {
   final bool isEducationMode;
   final String? gradeLevel;
+  final bool shouldScrollToNextRound;
   
   const CampaignScreen({
     super.key,
     this.isEducationMode = false,
     this.gradeLevel,
+    this.shouldScrollToNextRound = false,
   });
 
   @override
@@ -225,8 +227,9 @@ class _CampaignScreenState extends State<CampaignScreen>
           final service = EducationCampaignService(gradeLevel: widget.gradeLevel!);
           // Initialize the service asynchronously
           service.initialize().then((_) {
-            // Scroll to latest round after rounds are loaded (only once)
-            if (!_hasScrolledToLatest) {
+            // Scroll to latest round after rounds are loaded
+            // Always scroll if shouldScrollToNextRound is true, otherwise only once
+            if (widget.shouldScrollToNextRound || !_hasScrolledToLatest) {
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 Future.delayed(const Duration(milliseconds: 300), () {
                   if (mounted) {
@@ -270,8 +273,9 @@ class _CampaignScreenState extends State<CampaignScreen>
             return const Center(child: CircularProgressIndicator());
           }
 
-          // Scroll to latest round when rounds are available (only once)
-          if (!_hasScrolledToLatest && campaignService.rounds.isNotEmpty) {
+          // Scroll to latest round when rounds are available
+          // Always scroll if shouldScrollToNextRound is true, otherwise only once
+          if ((widget.shouldScrollToNextRound || !_hasScrolledToLatest) && campaignService.rounds.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               Future.delayed(const Duration(milliseconds: 300), () {
                 if (mounted && campaignService.rounds.isNotEmpty) {
@@ -301,6 +305,13 @@ class _CampaignScreenState extends State<CampaignScreen>
       floating: false,
       pinned: true,
       backgroundColor: AppTheme.darkBg,
+      leading: IconButton(
+        icon: const Icon(Icons.home, color: Colors.white),
+        onPressed: () {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+        tooltip: 'Go to Home',
+      ),
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           '🎮 ${AppLocalizations.of(context)?.campaignMode ?? 'Campaign Mode'}',
@@ -883,6 +894,13 @@ class _CampaignScreenState extends State<CampaignScreen>
       floating: false,
       pinned: true,
       backgroundColor: AppTheme.darkBg,
+      leading: IconButton(
+        icon: const Icon(Icons.home, color: Colors.white),
+        onPressed: () {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+        tooltip: 'Go to Home',
+      ),
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           '🎓 Education Campaign\n$gradeDisplay',

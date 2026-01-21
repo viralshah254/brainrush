@@ -219,3 +219,5 @@ Once you add your image URL and App Store ID, your meta tags will look like:
 Your app links will now show beautiful previews when shared on WhatsApp, Facebook, Twitter, and other social platforms! 🎉
 
 
+
+

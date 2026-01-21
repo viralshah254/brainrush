@@ -8,6 +8,7 @@ import '../../services/ad_service.dart';
 import '../../services/premium_service.dart';
 import '../../services/question_service.dart';
 import '../../services/campaign_service.dart';
+import '../../services/education_campaign_service.dart';
 import '../../services/expanded_question_bank.dart';
 import '../../services/education_question_bank.dart';
 import '../../services/question_tracker_service.dart';
@@ -107,14 +108,15 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
       
       if (widget.isEducationMode && widget.gradeLevel != null) {
         // Use Education Question Bank for education campaign
-        debugPrint('📚 Loading education questions for grade: ${widget.gradeLevel}, round: ${widget.round.roundNumber}');
-        questions = await EducationQuestionBank.getQuestionsForCampaignRound(
-          roundNumber: widget.round.roundNumber,
+        // IMPORTANT: Use the round's actual category (subject) instead of calculating from round number
+        debugPrint('📚 Loading education questions for grade: ${widget.gradeLevel}, round: ${widget.round.roundNumber}, subject: ${widget.round.category}');
+        questions = await EducationQuestionBank.getQuestionsForCampaign(
           gradeLevel: widget.gradeLevel!,
-          schoolSystem: _getSchoolSystemFromGrade(widget.gradeLevel!),
-          questionCount: widget.round.questionCount, // Use the round's question count (10-15)
+          subject: widget.round.category, // Use the round's actual category/subject
+          difficulty: _mapCampaignDifficultyToQuestionDifficulty(widget.round.difficulty.name),
+          count: widget.round.questionCount,
         );
-        debugPrint('✅ Loaded ${questions.length} education questions');
+        debugPrint('✅ Loaded ${questions.length} education questions for subject: ${widget.round.category}');
         
         if (questions.isEmpty) {
           debugPrint('⚠️ No education questions found with filters! Checking question bank...');
@@ -123,27 +125,45 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
           debugPrint('📊 Total questions for ${widget.gradeLevel}: $totalCount');
           
           if (totalCount > 0) {
-            // Try again without difficulty filter
-            debugPrint('🔄 Retrying with broader filters (any difficulty)...');
+            // Try again without difficulty filter but keep the subject
+            debugPrint('🔄 Retrying with broader filters (any difficulty, same subject: ${widget.round.category})...');
             questions = await EducationQuestionBank.getQuestions(
               gradeLevel: widget.gradeLevel!,
               subject: widget.round.category,
               difficulty: null, // Try without difficulty filter
-              count: 10,
+              count: widget.round.questionCount,
             );
             debugPrint('✅ Retry loaded ${questions.length} questions');
-          }
-          
-          if (questions.isEmpty && totalCount > 0) {
-            // Try with any subject
-            debugPrint('🔄 Retrying with any subject...');
-            questions = await EducationQuestionBank.getQuestions(
-              gradeLevel: widget.gradeLevel!,
-              subject: 'Math', // Try Math as fallback
-              difficulty: null,
-              count: 10,
-            );
-            debugPrint('✅ Retry with Math loaded ${questions.length} questions');
+            
+            // If still not enough, try other subjects for this grade level
+            if (questions.length < widget.round.questionCount) {
+              debugPrint('🔄 Not enough questions for ${widget.round.category}, trying other subjects...');
+              final allSubjects = ['Math', 'Science', 'English', 'History', 'Geography'];
+              for (final subject in allSubjects) {
+                if (subject == widget.round.category) continue; // Skip the original subject
+                
+                final subjectQuestions = await EducationQuestionBank.getQuestions(
+                  gradeLevel: widget.gradeLevel!,
+                  subject: subject,
+                  difficulty: null,
+                  count: widget.round.questionCount - questions.length,
+                );
+                
+                if (subjectQuestions.isNotEmpty) {
+                  debugPrint('✅ Found ${subjectQuestions.length} questions for $subject');
+                  questions.addAll(subjectQuestions);
+                  
+                  // If we have enough now, break
+                  if (questions.length >= widget.round.questionCount) {
+                    break;
+                  }
+                }
+              }
+              
+              // Take only what we need
+              questions = questions.take(widget.round.questionCount).toList();
+              debugPrint('✅ Total loaded after subject fallback: ${questions.length} questions');
+            }
           }
           
           if (questions.isEmpty) {
@@ -166,8 +186,14 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
         }
       }
 
+      // If we have fewer questions than requested, that's okay - use what we have
       if (questions.isEmpty) {
         throw Exception('No questions loaded');
+      }
+      
+      // Log if we have fewer questions than requested
+      if (questions.length < widget.round.questionCount) {
+        debugPrint('⚠️ Warning: Only ${questions.length} questions available, requested ${widget.round.questionCount}');
       }
 
       // Remove duplicates by question ID to ensure no repeated questions
@@ -254,11 +280,14 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     super.dispose();
   }
   
-  /// Extract school system code from grade level
-  String _getSchoolSystemFromGrade(String gradeLevel) {
-    if (gradeLevel.startsWith('US_')) return 'US';
-    if (gradeLevel.startsWith('UK_')) return 'UK';
-    return 'GENERAL';
+  /// Map campaign difficulty to question difficulty
+  String _mapCampaignDifficultyToQuestionDifficulty(String campaignDifficulty) {
+    // Campaign enum uses "superHard", questions use "very_hard"
+    // Convert enum name to question bank format
+    if (campaignDifficulty == 'superHard' || campaignDifficulty == 'super_hard') {
+      return 'very_hard';
+    }
+    return campaignDifficulty; // easy, medium, hard stay the same
   }
 
   Future<void> _handleAnswer(int index) async {
@@ -664,36 +693,26 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     // Convert roundNumber to roundId (string)
     final roundId = widget.round.roundNumber.toString();
     
-    // Complete the round locally first
-    context.read<CampaignService>().completeRound(
-      roundNumber: widget.round.roundNumber,
-      score: _score,
-      maxScore: maxScore,
-    );
-
-    // Send scores to backend
-    try {
-      debugPrint('📤 Sending campaign round completion to backend...');
-      debugPrint('   Round ID: $roundId');
-      debugPrint('   Score: $_score');
-      debugPrint('   Correct Answers: $_correctAnswers');
-      debugPrint('   Total Questions: ${_questions.length}');
-      debugPrint('   Time Spent: ${timeSpent}s');
-      
-      final api = ApiService();
-      await api.campaign.completeRound(
-        roundId: roundId,
+    // Complete the round locally first - this unlocks the next round immediately
+    if (widget.isEducationMode && widget.gradeLevel != null) {
+      context.read<EducationCampaignService>().completeRound(
+        roundNumber: widget.round.roundNumber,
         score: _score,
-        correctAnswers: _correctAnswers,
-        totalQuestions: _questions.length,
-        timeSpent: timeSpent,
+        maxScore: maxScore,
       );
-      
-      debugPrint('✅ Campaign round completion saved to backend');
-    } catch (e) {
-      debugPrint('⚠️ Failed to save campaign round completion to backend: $e');
-      // Continue with local completion even if backend fails
+    } else {
+      context.read<CampaignService>().completeRound(
+        roundNumber: widget.round.roundNumber,
+        score: _score,
+        maxScore: maxScore,
+      );
     }
+    
+    // Send scores to backend in background (non-blocking)
+    // This ensures results screen opens immediately
+    _sendRoundCompletionToBackend(roundId, timeSpent).catchError((e) {
+      debugPrint('⚠️ Background save failed: $e');
+    });
 
     // Calculate coins reward based on stars and accuracy
     final accuracy = (_correctAnswers / _questions.length) * 100;
@@ -715,7 +734,8 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     
     context.read<UserProvider>().addCoins(coinsEarned);
 
-    // Navigate to results
+    // Navigate to results immediately - don't wait for backend
+    if (!mounted) return;
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
@@ -726,13 +746,41 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
           correctAnswers: _correctAnswers,
           totalQuestions: _questions.length,
           coinsEarned: coinsEarned,
+          isEducationMode: widget.isEducationMode,
+          gradeLevel: widget.gradeLevel,
         ),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
-        transitionDuration: const Duration(milliseconds: 800),
+        transitionDuration: const Duration(milliseconds: 300),
       ),
     );
+  }
+  
+  /// Send round completion to backend in background (non-blocking)
+  Future<void> _sendRoundCompletionToBackend(String roundId, int timeSpent) async {
+    try {
+      debugPrint('📤 Sending campaign round completion to backend (background)...');
+      debugPrint('   Round ID: $roundId');
+      debugPrint('   Score: $_score');
+      debugPrint('   Correct Answers: $_correctAnswers');
+      debugPrint('   Total Questions: ${_questions.length}');
+      debugPrint('   Time Spent: ${timeSpent}s');
+      
+      final api = ApiService();
+      await api.campaign.completeRound(
+        roundId: roundId,
+        score: _score,
+        correctAnswers: _correctAnswers,
+        totalQuestions: _questions.length,
+        timeSpent: timeSpent,
+      );
+      
+      debugPrint('✅ Campaign round completion saved to backend');
+    } catch (e) {
+      debugPrint('⚠️ Failed to save campaign round completion to backend: $e');
+      // Silently fail - local completion is what matters
+    }
   }
 
   @override

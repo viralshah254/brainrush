@@ -110,3 +110,5 @@ All of these use **standard encryption provided by iOS**, so you're exempt from 
 The encryption requirement should be resolved once you upload a build with the updated Info.plist!
 
 
+
+
