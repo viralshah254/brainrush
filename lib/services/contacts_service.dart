@@ -154,76 +154,117 @@ class ContactsService {
 
   /// Load contacts from device
   Future<List<Contact>> loadContacts() async {
-    if (!await hasPermission()) {
-      final granted = await requestPermission();
-      if (!granted) {
+    try {
+      if (!await hasPermission()) {
+        final granted = await requestPermission();
+        if (!granted) {
+          // ignore: avoid_print
+          print('⚠️ Contacts permission not granted');
+          return [];
+        }
+      }
+
+      try {
+        _contacts = await FlutterContacts.getContacts(
+          withProperties: true,
+          withThumbnail: false,
+        );
+        
+        if (_contacts == null || _contacts!.isEmpty) {
+          // ignore: avoid_print
+          print('⚠️ No contacts found on device');
+          return [];
+        }
+        
+        // Sort by name
+        _contacts!.sort((a, b) {
+          final nameA = a.displayName.toLowerCase();
+          final nameB = b.displayName.toLowerCase();
+          return nameA.compareTo(nameB);
+        });
+
+        // Load saved "has app" contacts
+        try {
+          await _loadContactsWithApp();
+        } catch (e) {
+          // ignore: avoid_print
+          print('⚠️ Error loading contacts with app status: $e');
+          // Continue anyway - this is just for demo
+        }
+
+        return _contacts ?? [];
+      } catch (e, stackTrace) {
+        // ignore: avoid_print
+        print('❌ Error loading contacts from device: $e');
+        // ignore: avoid_print
+        print('❌ Stack trace: $stackTrace');
         return [];
       }
-    }
-
-    try {
-      _contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withThumbnail: false,
-      );
-      
-      // Sort by name
-      _contacts!.sort((a, b) {
-        final nameA = a.displayName.toLowerCase();
-        final nameB = b.displayName.toLowerCase();
-        return nameA.compareTo(nameB);
-      });
-
-      // Load saved "has app" contacts
-      await _loadContactsWithApp();
-
-      return _contacts ?? [];
-    } catch (e) {
+    } catch (e, stackTrace) {
       // ignore: avoid_print
-      print('❌ Error loading contacts: $e');
+      print('❌ Fatal error in loadContacts: $e');
+      // ignore: avoid_print
+      print('❌ Stack trace: $stackTrace');
       return [];
     }
   }
 
   /// Get contacts with app status
   Future<List<ContactWithAppStatus>> getContactsWithAppStatus() async {
-    if (_contacts == null || _contacts!.isEmpty) {
-      await loadContacts();
-    }
+    try {
+      if (_contacts == null || _contacts!.isEmpty) {
+        await loadContacts();
+      }
 
-    if (_contacts == null || _contacts!.isEmpty) {
+      if (_contacts == null || _contacts!.isEmpty) {
+        // ignore: avoid_print
+        print('⚠️ No contacts available');
+        return [];
+      }
+
+      final contactsWithStatus = <ContactWithAppStatus>[];
+
+      for (final contact in _contacts!) {
+        try {
+          // Get primary phone number
+          final phoneNumber = contact.phones.isNotEmpty
+              ? _normalizePhoneNumber(contact.phones.first.number)
+              : null;
+
+          // Check if this contact has the app (from saved list)
+          final hasApp = phoneNumber != null && _contactsWithApp.contains(phoneNumber);
+
+          contactsWithStatus.add(
+            ContactWithAppStatus(
+              contact: contact,
+              hasApp: hasApp,
+              phoneNumber: phoneNumber,
+            ),
+          );
+        } catch (e) {
+          // ignore: avoid_print
+          print('⚠️ Error processing contact ${contact.displayName}: $e');
+          // Skip this contact and continue
+          continue;
+        }
+      }
+
+      // Sort: contacts with app first, then alphabetically
+      contactsWithStatus.sort((a, b) {
+        if (a.hasApp && !b.hasApp) return -1;
+        if (!a.hasApp && b.hasApp) return 1;
+        return a.contact.displayName.toLowerCase()
+            .compareTo(b.contact.displayName.toLowerCase());
+      });
+
+      return contactsWithStatus;
+    } catch (e, stackTrace) {
+      // ignore: avoid_print
+      print('❌ Error getting contacts with app status: $e');
+      // ignore: avoid_print
+      print('❌ Stack trace: $stackTrace');
       return [];
     }
-
-    final contactsWithStatus = <ContactWithAppStatus>[];
-
-    for (final contact in _contacts!) {
-      // Get primary phone number
-      final phoneNumber = contact.phones.isNotEmpty
-          ? _normalizePhoneNumber(contact.phones.first.number)
-          : null;
-
-      // Check if this contact has the app (from saved list)
-      final hasApp = phoneNumber != null && _contactsWithApp.contains(phoneNumber);
-
-      contactsWithStatus.add(
-        ContactWithAppStatus(
-          contact: contact,
-          hasApp: hasApp,
-          phoneNumber: phoneNumber,
-        ),
-      );
-    }
-
-    // Sort: contacts with app first, then alphabetically
-    contactsWithStatus.sort((a, b) {
-      if (a.hasApp && !b.hasApp) return -1;
-      if (!a.hasApp && b.hasApp) return 1;
-      return a.contact.displayName.toLowerCase()
-          .compareTo(b.contact.displayName.toLowerCase());
-    });
-
-    return contactsWithStatus;
   }
 
   /// Mark a contact as having the app (for frontend simulation)

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../providers/game_provider.dart';
 import '../providers/user_provider.dart';
@@ -41,6 +42,9 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
   late Animation<double> _timerAnimation;
   bool _extraTimeUsed = false; // Track if extra time ad has been used for current question
   bool _showHint = false; // Track if hint is shown
+  bool _fiftyFiftyUsed = false; // Track if 50/50 lifeline has been used for current question
+  Set<int> _hiddenOptions = {}; // Track which options are hidden by 50/50
+  bool _showWrongAnswerDialog = false; // Track if wrong answer dialog is showing
 
   @override
   void initState() {
@@ -54,7 +58,18 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
     _timerAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_timerController)
       ..addListener(() {
         setState(() {
-          _timeRemaining = (15 * (1 - _timerController.value)).ceil();
+          // Calculate time remaining based on current timer duration and value
+          // Timer animation: value goes from 0.0 (start) to 1.0 (end)
+          // When value = 0.0: animation just started (full time remaining)
+          // When value = 1.0: animation completed (no time remaining)
+          // Formula: timeRemaining = duration * (1 - value)
+          // When value = 0.0: timeRemaining = duration * (1 - 0) = duration (full time) ✓
+          // When value = 1.0: timeRemaining = duration * (1 - 1) = 0 (no time) ✓
+          final currentDuration = _timerController.duration?.inSeconds;
+          if (currentDuration != null) {
+            _timeRemaining = (currentDuration * (1 - _timerController.value)).ceil();
+          }
+          // If duration is null, keep the current _timeRemaining value (don't reset to 15)
         });
       });
 
@@ -137,6 +152,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
               _isCorrect = false;
               _timeRemaining = 15;
               _extraTimeUsed = false; // Reset extra time for retry
+              _fiftyFiftyUsed = false; // Reset 50/50 for retry
+              _hiddenOptions.clear(); // Clear hidden options
             });
             _timerController.forward(from: 0.0);
             return; // Exit early, don't move to next question
@@ -254,6 +271,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
         _isCorrect = false;
         _timeRemaining = 15;
         _extraTimeUsed = false; // Reset extra time for next question
+        _fiftyFiftyUsed = false; // Reset 50/50 for next question
+        _hiddenOptions.clear(); // Clear hidden options
       });
       // Reset and start timer for next question
       _timerController.reset();
@@ -298,7 +317,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✓ +10 seconds added!'),
+            content: Text('✓ +30 seconds added!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 2),
           ),
@@ -306,20 +325,110 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
       }
     }
   }
+
+  Future<void> _handleFiftyFifty() async {
+    if (_fiftyFiftyUsed || _answered) return; // Already used or question answered
+    
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get 50/50 without ads
+      _applyFiftyFifty();
+      return;
+    }
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AdLoadingDialog(
+        message: 'Loading ad...',
+      ),
+    );
+
+    // Try to show ad
+    final adShown = await adService.showTryAgainAd();
+    
+    if (!mounted) return;
+    
+    // Dismiss loading dialog
+    Navigator.of(context).pop();
+    
+    if (adShown) {
+      // Ad watched successfully - apply 50/50
+      _applyFiftyFifty();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ 2 wrong answers removed!'),
+            backgroundColor: Colors.purple,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _applyFiftyFifty() {
+    final gameProvider = context.read<GameProvider>();
+    final question = gameProvider.currentQuestion;
+    if (question == null) return;
+
+    // Get wrong answer indices (all except correct one)
+    final wrongIndices = <int>[];
+    for (int i = 0; i < question.options.length; i++) {
+      if (i != question.correctIndex) {
+        wrongIndices.add(i);
+      }
+    }
+
+    // Randomly select 2 wrong answers to hide
+    wrongIndices.shuffle();
+    final toHide = wrongIndices.take(2).toSet();
+
+    setState(() {
+      _fiftyFiftyUsed = true;
+      _hiddenOptions = toHide;
+    });
+  }
   
   void _addExtraTime() {
+    if (_answered) return; // Don't add time if question already answered
+    
+    // Stop the timer first to prevent listener from interfering
+    _timerController.stop();
+    
     setState(() {
       _extraTimeUsed = true;
-      _timeRemaining += 10; // Add 10 seconds
       
-      // Adjust the timer controller
-      final currentValue = _timerController.value;
-      final newValue = (currentValue - (10.0 / 15.0)).clamp(0.0, 1.0);
+      // Get current time remaining - use the displayed value
+      final currentTimeRemaining = _timeRemaining;
+      final newTimeRemaining = currentTimeRemaining + 30;
       
-      _timerController.stop();
-      _timerController.value = newValue;
-      _timerController.forward();
+      debugPrint('⏰ Adding extra time: $currentTimeRemaining + 30 = $newTimeRemaining seconds');
+      
+      // IMPORTANT: Set duration FIRST, then reset value
+      // Extend the timer duration to accommodate the new time
+      _timerController.duration = Duration(seconds: newTimeRemaining);
+      
+      // Reset the animation controller to start from the beginning (value = 0.0)
+      // Timer formula: timeRemaining = duration * (1 - value)
+      // When value = 0.0: timeRemaining = duration * (1 - 0) = duration (full time) ✓
+      // When value = 1.0: timeRemaining = duration * (1 - 1) = 0 (no time) ✓
+      _timerController.reset(); // This sets value to 0.0 and status to dismissed
+      
+      // Update the displayed time immediately (before listener recalculates)
+      _timeRemaining = newTimeRemaining;
+      
+      debugPrint('⏰ Timer updated: duration=${_timerController.duration?.inSeconds}s, value=${_timerController.value}, timeRemaining=$newTimeRemaining');
     });
+    
+    // Resume timer - it will count down from newTimeRemaining to 0
+    // The listener will update _timeRemaining as it counts down
+    _timerController.forward();
   }
 
   Future<bool?> _showTryAgainDialog() async {
@@ -417,8 +526,8 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                       ),
                       Row(
                         children: [
-                          // Extra Time Button
-                          if (!_answered && !_extraTimeUsed && _timeRemaining <= 10)
+                          // Extra Time Button (available before time runs out)
+                          if (!_answered && !_extraTimeUsed && _timeRemaining > 0)
                             GestureDetector(
                               onTap: _handleExtraTime,
                               child: Container(
@@ -440,7 +549,7 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                     ),
                                     SizedBox(width: 4),
                                     Text(
-                                      '+10s',
+                                      '+30s',
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
@@ -558,8 +667,14 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 40),
 
-                  // Question
-                  Container(
+                  // Question and Options with blur overlay
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        Column(
+                          children: [
+                            // Question
+                            Container(
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
                       color: AppTheme.darkCard,
@@ -583,20 +698,48 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                                 textAlign: TextAlign.center,
                               ),
                             ),
-                            // Hint button
-                            if (!_answered && question.hint != null && question.hint!.isNotEmpty)
-                              IconButton(
-                                icon: Icon(
-                                  _showHint ? Icons.lightbulb : Icons.lightbulb_outline,
-                                  color: AppTheme.accentNeon,
-                                ),
-                                onPressed: () {
-                                  setState(() {
-                                    _showHint = !_showHint;
-                                  });
-                                },
-                                tooltip: 'Show hint',
-                              ),
+                            // Lifelines row
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // 50/50 Button
+                                if (!_answered && !_fiftyFiftyUsed)
+                                  IconButton(
+                                    icon: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.purple.withOpacity(0.2),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: Colors.purple, width: 1.5),
+                                      ),
+                                      child: const Text(
+                                        '50:50',
+                                        style: TextStyle(
+                                          color: Colors.purple,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    onPressed: _handleFiftyFifty,
+                                    tooltip: 'Remove 2 wrong answers (Watch Ad)',
+                                  ),
+                                // Hint button
+                                if (!_answered && question.hint != null && question.hint!.isNotEmpty)
+                                  IconButton(
+                                    icon: Icon(
+                                      _showHint ? Icons.lightbulb : Icons.lightbulb_outline,
+                                      color: AppTheme.accentNeon,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        _showHint = !_showHint;
+                                      });
+                                    },
+                                    tooltip: 'Show hint',
+                                  ),
+                              ],
+                            ),
                           ],
                         ),
                         // Learning Objective (if available)
@@ -660,11 +803,16 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                   ),
                   const SizedBox(height: 32),
 
-                  // Options
-                  Expanded(
-                    child: ListView.builder(
+                            // Options
+                            Expanded(
+                              child: ListView.builder(
                       itemCount: question.options.length,
                       itemBuilder: (context, index) {
+                        // Hide options removed by 50/50 (unless answered)
+                        if (!_answered && _hiddenOptions.contains(index)) {
+                          return const SizedBox.shrink();
+                        }
+
                         final isSelected = _selectedIndex == index;
                         final isCorrectOption = index == question.correctIndex;
                         
@@ -751,6 +899,21 @@ class _GameScreenState extends State<GameScreen> with TickerProviderStateMixin {
                           ),
                         );
                       },
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Blur overlay when wrong answer dialog is showing
+                        if (_showWrongAnswerDialog)
+                          Positioned.fill(
+                            child: BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                              child: Container(
+                                color: Colors.black.withOpacity(0.3),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
 

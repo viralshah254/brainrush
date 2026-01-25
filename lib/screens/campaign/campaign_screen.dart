@@ -32,6 +32,7 @@ class _CampaignScreenState extends State<CampaignScreen>
   late ScrollController _scrollController;
   late AnimationController _animationController;
   bool _hasScrolledToLatest = false;
+  EducationCampaignService? _educationService; // Store reference to service
 
   @override
   void initState() {
@@ -70,7 +71,12 @@ class _CampaignScreenState extends State<CampaignScreen>
       List<CampaignRound> allRounds;
       
       if (isEducation && widget.gradeLevel != null) {
-        final educationService = context.read<EducationCampaignService>();
+        // Use stored service reference instead of reading from context
+        final educationService = _educationService;
+        if (educationService == null) {
+          debugPrint('⚠️ EducationCampaignService not available for scrolling');
+          return;
+        }
         currentRound = educationService.currentRound;
         allRounds = educationService.rounds;
       } else {
@@ -225,6 +231,7 @@ class _CampaignScreenState extends State<CampaignScreen>
       return ChangeNotifierProvider<EducationCampaignService>(
         create: (_) {
           final service = EducationCampaignService(gradeLevel: widget.gradeLevel!);
+          _educationService = service; // Store reference
           // Initialize the service asynchronously
           service.initialize().then((_) {
             // Scroll to latest round after rounds are loaded
@@ -533,7 +540,7 @@ class _CampaignScreenState extends State<CampaignScreen>
           if (round.isLocked) {
             _showLockedDialog(round);
           } else {
-            _startRound(round);
+            _startRound(round); // Normal campaign mode - no education service needed
           }
         },
         child: AnimatedContainer(
@@ -840,7 +847,7 @@ class _CampaignScreenState extends State<CampaignScreen>
     );
   }
 
-  void _startRound(CampaignRound round) {
+  void _startRound(CampaignRound round, {EducationCampaignService? educationService}) {
     final userProvider = context.read<UserProvider>();
     final entryCost = round.difficulty.entryCost;
     
@@ -854,29 +861,88 @@ class _CampaignScreenState extends State<CampaignScreen>
     userProvider.spendCoins(entryCost);
     
     HapticFeedback.lightImpact();
-    Navigator.push(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            CampaignGameScreen(
-          round: round,
-          isEducationMode: widget.isEducationMode,
-          gradeLevel: widget.gradeLevel,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(
-            opacity: animation,
-            child: ScaleTransition(
-              scale: Tween<double>(begin: 0.8, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOut),
-              ),
-              child: child,
+    
+    // If education mode, we need to provide EducationCampaignService to CampaignGameScreen
+    // since it's pushed as a new route and might not have access to the provider
+    if (widget.isEducationMode && widget.gradeLevel != null) {
+      // Use the passed service, or the stored service reference, or try context as last resort
+      final serviceToPass = educationService ?? 
+                            _educationService ?? 
+                            (() {
+                              try {
+                                return context.read<EducationCampaignService>();
+                              } catch (e) {
+                                debugPrint('❌ Could not access EducationCampaignService: $e');
+                                debugPrint('❌ Service was not passed and not available in context');
+                                return null;
+                              }
+                            })();
+      
+      if (serviceToPass == null) {
+        debugPrint('❌ Cannot start round: EducationCampaignService not available');
+        // Show error to user
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Could not access campaign service. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+      
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              ChangeNotifierProvider<EducationCampaignService>.value(
+            value: serviceToPass,
+            child: CampaignGameScreen(
+              round: round,
+              isEducationMode: widget.isEducationMode,
+              gradeLevel: widget.gradeLevel,
             ),
-          );
-        },
-        transitionDuration: const Duration(milliseconds: 500),
-      ),
-    );
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                ),
+                child: child,
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+      );
+    } else {
+      // Normal campaign mode - CampaignService is provided at app level
+      Navigator.push(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (context, animation, secondaryAnimation) =>
+              CampaignGameScreen(
+            round: round,
+            isEducationMode: widget.isEducationMode,
+            gradeLevel: widget.gradeLevel,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            return FadeTransition(
+              opacity: animation,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.8, end: 1.0).animate(
+                  CurvedAnimation(parent: animation, curve: Curves.easeOut),
+                ),
+                child: child,
+              ),
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+      );
+    }
   }
 
   void _showInsufficientCoinsDialog(int required) {
@@ -1089,7 +1155,7 @@ class _CampaignScreenState extends State<CampaignScreen>
           if (round.isLocked) {
             _showLockedDialog(round);
           } else {
-            _startRound(round);
+            _startRound(round, educationService: service);
           }
         },
         child: AnimatedContainer(

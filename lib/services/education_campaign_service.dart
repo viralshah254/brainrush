@@ -13,6 +13,11 @@ class EducationCampaignService extends ChangeNotifier {
   
   // Create instance per grade level (to support multiple users/grade levels)
   factory EducationCampaignService({required String gradeLevel}) {
+    // If instance exists but is disposed, create a new one
+    if (_instances.containsKey(gradeLevel) && _instances[gradeLevel]!._isDisposed) {
+      _instances.remove(gradeLevel);
+    }
+    
     if (!_instances.containsKey(gradeLevel)) {
       _instances[gradeLevel] = EducationCampaignService._internal(gradeLevel);
     }
@@ -42,13 +47,33 @@ class EducationCampaignService extends ChangeNotifier {
     'Geography',
   ];
   
+  bool _isDisposed = false;
+  
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
+  }
+  
+  void _safeNotifyListeners() {
+    if (!_isDisposed) {
+      notifyListeners();
+    }
+  }
+  
   Future<void> initialize() async {
+    if (_isDisposed) return; // Don't initialize if already disposed
+    
     await _loadProgress();
+    if (_isDisposed) return; // Check again after async operation
+    
     if (_rounds.isEmpty) {
       _generateRounds();
       await _saveProgress();
+      if (_isDisposed) return; // Check again after async operation
     }
-    notifyListeners();
+    
+    _safeNotifyListeners();
   }
   
   void _generateRounds() {
@@ -252,7 +277,7 @@ class EducationCampaignService extends ChangeNotifier {
     }
     
     await _saveProgress();
-    notifyListeners();
+    _safeNotifyListeners();
   }
   
   Future<void> _loadProgress() async {
@@ -340,7 +365,7 @@ class EducationCampaignService extends ChangeNotifier {
     _totalStars = 0;
     _generateRounds();
     _saveProgress();
-    notifyListeners();
+    _safeNotifyListeners();
   }
 }
 

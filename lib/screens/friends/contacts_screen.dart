@@ -31,52 +31,94 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _loadContacts() async {
+    if (!mounted) return;
+    
     setState(() {
       _isLoading = true;
     });
 
-    // Check permission
-    final hasPermission = await _contactsService.hasPermission();
-    // ignore: avoid_print
-    print('📱 Contacts permission status: $hasPermission');
-    
-    if (!hasPermission) {
+    try {
+      // Check permission
+      final hasPermission = await _contactsService.hasPermission();
       // ignore: avoid_print
-      print('❌ Contacts permission NOT granted');
-      setState(() {
-        _hasPermission = false;
-        _isLoading = false;
-      });
-      return;
-    }
+      print('📱 Contacts permission status: $hasPermission');
+      
+      if (!hasPermission) {
+        // ignore: avoid_print
+        print('❌ Contacts permission NOT granted');
+        if (mounted) {
+          setState(() {
+            _hasPermission = false;
+            _isLoading = false;
+          });
+        }
+        return;
+      }
 
-    // ignore: avoid_print
-    print('✅ Contacts permission GRANTED');
-    
-    setState(() {
-      _hasPermission = true;
-    });
+      // ignore: avoid_print
+      print('✅ Contacts permission GRANTED');
+      
+      if (mounted) {
+        setState(() {
+          _hasPermission = true;
+        });
+      }
 
-    // Simulate finding contacts with app (for demo)
-    // In production, this would be a backend API call
-    await _contactsService.simulateFindContactsWithApp();
-    final allContacts = await _contactsService.getContactsWithAppStatus();
-    
-    // Filter to show ONLY contacts who have the game
-    final contactsWithGame = allContacts.where((contact) => contact.hasApp).toList();
-    
-    // ignore: avoid_print
-    print('📱 Total contacts: ${allContacts.length}');
-    // ignore: avoid_print
-    print('📱 Contacts with game: ${contactsWithGame.length}');
-    // ignore: avoid_print
-    print('📱 Showing only contacts who have the game');
+      // Simulate finding contacts with app (for demo)
+      // In production, this would be a backend API call
+      try {
+        await _contactsService.simulateFindContactsWithApp();
+      } catch (e) {
+        // ignore: avoid_print
+        print('⚠️ Error simulating contacts with app: $e');
+        // Continue anyway - this is just for demo
+      }
+      
+      final allContacts = await _contactsService.getContactsWithAppStatus();
+      
+      // Filter to show ONLY contacts who have the game
+      final contactsWithGame = allContacts.where((contact) => contact.hasApp).toList();
+      
+      // ignore: avoid_print
+      print('📱 Total contacts: ${allContacts.length}');
+      // ignore: avoid_print
+      print('📱 Contacts with game: ${contactsWithGame.length}');
+      // ignore: avoid_print
+      print('📱 Showing only contacts who have the game');
 
-    if (mounted) {
-      setState(() {
-        _contacts = contactsWithGame; // Only show contacts with app
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _contacts = contactsWithGame; // Only show contacts with app
+          _isLoading = false;
+        });
+      }
+    } catch (e, stackTrace) {
+      // ignore: avoid_print
+      print('❌ Error loading contacts: $e');
+      // ignore: avoid_print
+      print('❌ Stack trace: $stackTrace');
+      
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasPermission = false;
+          _contacts = [];
+        });
+        
+        // Show error message to user
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading contacts: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Retry',
+              textColor: Colors.white,
+              onPressed: _loadContacts,
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -375,7 +417,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
             // Content
             Expanded(
               child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.primaryNeon,
+                      ),
+                    )
                   : !_hasPermission
                       ? _buildPermissionRequest()
                       : _buildContactsList(),
@@ -518,83 +564,139 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildContactsList() {
-    // Filter to show ONLY contacts who have the game
-    final filtered = _filteredContacts.where((c) => c.hasApp).toList();
-    
-    // ignore: avoid_print
-    print('📱 Displaying ${filtered.length} contacts (all have the game)');
+    try {
+      // Filter to show ONLY contacts who have the game
+      final filtered = _filteredContacts.where((c) => c.hasApp).toList();
+      
+      // ignore: avoid_print
+      print('📱 Displaying ${filtered.length} contacts (all have the game)');
 
-    if (filtered.isEmpty) {
+      if (filtered.isEmpty) {
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.contacts_outlined,
+                size: 80,
+                color: Colors.white60,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'No contacts found',
+                style: TextStyle(
+                  fontSize: 20,
+                  color: Colors.white60,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No contacts in your phone are playing MindRush yet.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.5),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+
+      return ListView(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        children: [
+          // Header showing only contacts with game
+          if (filtered.isNotEmpty) ...[
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.green),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle, color: Colors.green, size: 16),
+                        SizedBox(width: 6),
+                        Text(
+                          'Playing MindRush',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${filtered.length}',
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ...filtered.map((contactWithStatus) =>
+                _buildContactCard(contactWithStatus, hasApp: true)),
+          ],
+        ],
+      );
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Error building contacts list: $e');
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(
-              Icons.contacts_outlined,
+              Icons.error_outline,
               size: 80,
-              color: Colors.white60,
+              color: Colors.red,
             ),
             const SizedBox(height: 16),
             const Text(
-              'No contacts found',
+              'Error loading contacts',
               style: TextStyle(
                 fontSize: 20,
-                color: Colors.white60,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                e.toString(),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _loadContacts,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNeon,
+                foregroundColor: AppTheme.darkBg,
               ),
             ),
           ],
         ),
       );
     }
-
-      return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      children: [
-        // Header showing only contacts with game
-        if (filtered.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.green),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle, color: Colors.green, size: 16),
-                      SizedBox(width: 6),
-                      Text(
-                        'Playing MindRush',
-                        style: TextStyle(
-                          color: Colors.green,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  '${filtered.length}',
-                  style: const TextStyle(
-                    color: Colors.white60,
-                    fontSize: 14,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          ...filtered.map((contactWithStatus) =>
-              _buildContactCard(contactWithStatus, hasApp: true)),
-        ],
-      ],
-    );
   }
 
   Widget _buildContactCard(ContactWithAppStatus contactWithStatus, {required bool hasApp}) {

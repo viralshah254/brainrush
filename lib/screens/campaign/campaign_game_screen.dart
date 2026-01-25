@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:ui';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
@@ -53,6 +54,13 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
   String? _loadingError;
   bool _showHint = false; // Track if hint is shown
   DateTime? _roundStartTime; // Track when round started for timeSpent calculation
+  OverlayEntry? _loadingResultsOverlay; // Loading overlay for results
+  bool _extraTimeUsed = false; // Track if extra time ad has been used for current question
+  bool _fiftyFiftyUsed = false; // Track if 50/50 lifeline has been used for current question
+  Set<int> _hiddenOptions = {}; // Track which options are hidden by 50/50
+  bool _showWrongAnswerDialog = false; // Track if wrong answer dialog is showing
+  bool _fiveSecondPromptShown = false; // Track if 5-second prompt has been shown for current question
+  bool _isWatchingAd = false; // Track if user is currently watching an ad (prevents timeout)
 
   late AnimationController _timerController;
   late Animation<double> _timerAnimation;
@@ -71,13 +79,39 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     _timerAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_timerController)
       ..addListener(() {
         setState(() {
-          _timeRemaining = (15 * (1 - _timerController.value)).ceil();
+          // Calculate time remaining based on current timer duration and value
+          // Timer animation: value goes from 0.0 (start) to 1.0 (end)
+          // When value = 0.0: animation just started (full time remaining)
+          // When value = 1.0: animation completed (no time remaining)
+          // Formula: timeRemaining = duration * (1 - value)
+          // When value = 0.0: timeRemaining = duration * (1 - 0) = duration (full time) ✓
+          // When value = 1.0: timeRemaining = duration * (1 - 1) = 0 (no time) ✓
+          final currentDuration = _timerController.duration?.inSeconds;
+          if (currentDuration != null) {
+            _timeRemaining = (currentDuration * (1 - _timerController.value)).ceil();
+          }
+          // If duration is null, keep the current _timeRemaining value (don't reset to 15)
+          
+          // Pause at 5 seconds and prompt for extra time (only if timer is at original 15s duration)
+          if (_timeRemaining == 5 && 
+              !_answered && 
+              !_fiveSecondPromptShown && 
+              !_extraTimeUsed &&
+              currentDuration == 15) { // Only prompt if we're still on original 15s timer
+            _fiveSecondPromptShown = true;
+            _timerController.stop();
+            _showFiveSecondPrompt();
+          }
         });
       });
 
     _timerController.addStatusListener((status) {
-      if (status == AnimationStatus.completed && !_answered) {
-        _handleAnswer(-1); // Timeout
+      // Only trigger timeout if timer completed AND question not answered AND not watching ad
+      if (status == AnimationStatus.completed && !_answered && !_isWatchingAd) {
+        // Double check that timer actually reached 0 (not just paused)
+        if (_timeRemaining <= 0) {
+          _handleAnswer(-1); // Timeout
+        }
       }
     });
 
@@ -275,6 +309,7 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
 
   @override
   void dispose() {
+    _removeLoadingResultsOverlay();
     _timerController.dispose();
     _questionTransitionController.dispose();
     super.dispose();
@@ -319,46 +354,82 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
       
       if (!premiumService.isPremium) {
         // Show try again dialog (no double points here)
-        final shouldTryAgain = await _showWrongAnswerDialog();
+        setState(() {
+          _showWrongAnswerDialog = true;
+        });
+        final shouldTryAgain = await _showWrongAnswerDialogMethod();
+        setState(() {
+          _showWrongAnswerDialog = false;
+        });
         
         if (shouldTryAgain == true) {
           // Show loading dialog
           if (!mounted) return;
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const AdLoadingDialog(
-              message: 'Loading ad...',
-            ),
-          );
-
-          // Try to load and show ad
-          final watched = await adService.showTryAgainAd();
+          bool dialogShown = false;
           
-          // Close loading dialog
-          if (!mounted) return;
-          Navigator.of(context).pop();
-
-          if (watched) {
-            // Reset for another try (but keep wrong options highlighted)
-            setState(() {
-              _selectedIndex = null;
-              _answered = false;
-              _isCorrect = false;
-              _timeRemaining = 15;
-            });
-            _timerController.forward(from: 0.0);
-            return;
-          } else {
-            // Show error dialog
-            if (!mounted) return;
-            await showDialog(
+          try {
+            showDialog(
               context: context,
-              builder: (context) => AdFailedDialog(
-                message: 'Unable to load ad at this time.',
-                onContinue: () => Navigator.of(context).pop(),
+              barrierDismissible: false,
+              builder: (context) => const AdLoadingDialog(
+                message: 'Loading ad...',
               ),
             );
+            dialogShown = true;
+
+            // Try to load and show ad with timeout
+            final watched = await Future.any([
+              adService.showTryAgainAd(),
+              Future.delayed(const Duration(seconds: 15), () => false), // 15 second timeout
+            ]);
+            
+            // Always close loading dialog
+            if (mounted && dialogShown) {
+              Navigator.of(context).pop();
+              dialogShown = false;
+            }
+
+            if (watched) {
+              // Reset for another try (but keep wrong options highlighted)
+              setState(() {
+                _selectedIndex = null;
+                _answered = false;
+                _isCorrect = false;
+                _timeRemaining = 15;
+              _extraTimeUsed = false; // Reset extra time for retry
+              _fiftyFiftyUsed = false; // Reset 50/50 for retry
+              _hiddenOptions.clear(); // Clear hidden options
+              _fiveSecondPromptShown = false; // Reset 5-second prompt for retry
+              _isWatchingAd = false; // Reset ad watching flag
+            });
+              _timerController.forward(from: 0.0);
+              return;
+            } else {
+              // Show error dialog
+              if (!mounted) return;
+              await showDialog(
+                context: context,
+                builder: (context) => AdFailedDialog(
+                  message: 'Unable to load ad at this time.',
+                  onContinue: () => Navigator.of(context).pop(),
+                ),
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ Error in try again ad: $e');
+            // Ensure dialog is dismissed even on error
+            if (mounted && dialogShown) {
+              Navigator.of(context).pop();
+            }
+            if (mounted) {
+              await showDialog(
+                context: context,
+                builder: (context) => AdFailedDialog(
+                  message: 'Error loading ad. Please try again.',
+                  onContinue: () => Navigator.of(context).pop(),
+                ),
+              );
+            }
           }
         }
       }
@@ -434,23 +505,24 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     // Show countdown before next question (only if not last question)
     if (_currentQuestionIndex < _questions.length - 1) {
       await _showCountdown();
-    } else {
-      // Wait 2 seconds before finishing round
-      await Future.delayed(const Duration(seconds: 2));
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    if (_currentQuestionIndex < _questions.length - 1) {
+      
+      if (!mounted) return;
       _nextQuestion();
     } else {
-      _finishRound();
+      // Show loading overlay while preparing results
+      if (mounted) {
+        _showLoadingResultsOverlay();
+      }
+      // Wait briefly to show loading message
+      await Future.delayed(const Duration(milliseconds: 800));
+      
+      if (!mounted) return;
+      // Finish round and navigate to results
+      await _finishRound();
     }
   }
 
-  Future<bool?> _showWrongAnswerDialog() async {
+  Future<bool?> _showWrongAnswerDialogMethod() async {
     return showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -665,6 +737,593 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     countdownNotifier.dispose();
   }
 
+  void _showLoadingResultsOverlay() {
+    if (!mounted) return;
+    
+    // Remove any existing overlay first
+    _removeLoadingResultsOverlay();
+    
+    _loadingResultsOverlay = OverlayEntry(
+      opaque: false, // Allow navigation to work through overlay
+      maintainState: false, // Don't maintain state when removed
+      builder: (context) => IgnorePointer(
+        ignoring: true, // Completely ignore pointer events
+        child: Material(
+          color: Colors.black.withValues(alpha: 0.85),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Animated loading spinner
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.primaryNeon.withValues(alpha: 0.9),
+                        AppTheme.primaryNeon.withValues(alpha: 0.6),
+                      ],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppTheme.primaryNeon.withValues(alpha: 0.8),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: CircularProgressIndicator(
+                      color: AppTheme.darkBg,
+                      strokeWidth: 4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                // Loading message with icon
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.emoji_events,
+                      color: AppTheme.primaryNeon,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Loading Results...',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            color: AppTheme.primaryNeon.withValues(alpha: 0.5),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Calculating your score and unlocking next round',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.7),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    
+    if (mounted) {
+      Overlay.of(context).insert(_loadingResultsOverlay!);
+    }
+  }
+
+  void _removeLoadingResultsOverlay() {
+    if (_loadingResultsOverlay != null) {
+      try {
+        if (_loadingResultsOverlay!.mounted) {
+          _loadingResultsOverlay!.remove();
+          debugPrint('✅ Loading overlay removed');
+        } else {
+          debugPrint('⚠️ Loading overlay not mounted, already removed');
+        }
+      } catch (e) {
+        // Overlay might already be removed
+        debugPrint('⚠️ Error removing loading overlay: $e');
+      }
+      _loadingResultsOverlay = null;
+    } else {
+      debugPrint('⚠️ No loading overlay to remove');
+    }
+  }
+
+  Future<void> _handleExtraTime() async {
+    if (_extraTimeUsed || _answered) return; // Already used or question answered
+    
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get extra time without ads
+      _addExtraTime();
+      return;
+    }
+    
+    // Pause the timer before showing ad
+    _timerController.stop();
+    
+    // Mark that we're watching an ad (prevents timeout)
+    setState(() {
+      _isWatchingAd = true;
+    });
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    if (!mounted) return;
+    bool dialogShown = false;
+    
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AdLoadingDialog(
+          message: 'Loading ad...',
+        ),
+      );
+      dialogShown = true;
+
+      // Try to show ad with timeout to prevent hanging
+      final adShown = await Future.any([
+        adService.showTryAgainAd(),
+        Future.delayed(const Duration(seconds: 15), () => false), // 15 second timeout
+      ]);
+      
+      // Always dismiss loading dialog
+      if (mounted && dialogShown) {
+        Navigator.of(context).pop();
+        dialogShown = false;
+      }
+      
+      // Mark that ad watching is complete
+      setState(() {
+        _isWatchingAd = false;
+      });
+      
+      if (adShown) {
+        // Ad watched successfully - add extra time
+        _addExtraTime();
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✓ +30 seconds added!'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Resume timer if ad failed
+        if (mounted && !_answered) {
+          _timerController.forward();
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to load ad. Please try again.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error in extra time ad: $e');
+      // Mark that ad watching is complete
+      setState(() {
+        _isWatchingAd = false;
+      });
+      // Ensure dialog is dismissed even on error
+      if (mounted && dialogShown) {
+        Navigator.of(context).pop();
+      }
+      // Resume timer on error
+      if (mounted && !_answered) {
+        _timerController.forward();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error loading ad. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _addExtraTime() {
+    if (_answered) return; // Don't add time if question already answered
+    
+    // Stop the timer first to prevent listener from interfering
+    _timerController.stop();
+    
+    setState(() {
+      _extraTimeUsed = true;
+      
+      // Get current time remaining - use the displayed value
+      final currentTimeRemaining = _timeRemaining;
+      final newTimeRemaining = currentTimeRemaining + 30;
+      
+      debugPrint('⏰ Adding extra time: $currentTimeRemaining + 30 = $newTimeRemaining seconds');
+      
+      // IMPORTANT: Set duration FIRST, then reset value
+      // Extend the timer duration to accommodate the new time
+      _timerController.duration = Duration(seconds: newTimeRemaining);
+      
+      // Reset the animation controller to start from the beginning (value = 0.0)
+      // Timer formula: timeRemaining = duration * (1 - value)
+      // When value = 0.0: timeRemaining = duration * (1 - 0) = duration (full time) ✓
+      // When value = 1.0: timeRemaining = duration * (1 - 1) = 0 (no time) ✓
+      _timerController.reset(); // This sets value to 0.0 and status to dismissed
+      
+      // Update the displayed time immediately (before listener recalculates)
+      _timeRemaining = newTimeRemaining;
+      
+      debugPrint('⏰ Timer updated: duration=${_timerController.duration?.inSeconds}s, value=${_timerController.value}, timeRemaining=$newTimeRemaining');
+    });
+    
+    // Resume timer - it will count down from newTimeRemaining to 0
+    // The listener will update _timeRemaining as it counts down
+    _timerController.forward();
+  }
+
+  Future<void> _handleFiftyFifty() async {
+    if (_fiftyFiftyUsed || _answered) return; // Already used or question answered
+    
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get 50/50 without ads
+      _applyFiftyFifty();
+      return;
+    }
+    
+    // Pause the timer before showing ad
+    _timerController.stop();
+    
+    // Mark that we're watching an ad (prevents timeout)
+    setState(() {
+      _isWatchingAd = true;
+    });
+    
+    final adService = context.read<AdService>();
+    
+    // Show loading dialog
+    if (!mounted) return;
+    bool dialogShown = false;
+    
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const AdLoadingDialog(
+          message: 'Loading ad...',
+        ),
+      );
+      dialogShown = true;
+
+      // Try to show ad with timeout to prevent hanging
+      final adShown = await Future.any([
+        adService.showTryAgainAd(),
+        Future.delayed(const Duration(seconds: 15), () => false), // 15 second timeout
+      ]);
+      
+      // Always dismiss loading dialog
+      if (mounted && dialogShown) {
+        Navigator.of(context).pop();
+        dialogShown = false;
+      }
+      
+      // Mark that ad watching is complete
+      setState(() {
+        _isWatchingAd = false;
+      });
+      
+      if (adShown) {
+        // Ad watched successfully - apply 50/50
+        _applyFiftyFifty();
+        
+        // Resume timer after reward granted - continue from where it was paused
+        if (mounted && !_answered) {
+          _timerController.forward();
+        }
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✓ 2 wrong answers removed!'),
+              backgroundColor: Colors.purple,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        // Resume timer if ad failed - continue from where it was paused
+        if (mounted && !_answered) {
+          _timerController.forward();
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to load ad. Please try again.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error in 50/50 ad: $e');
+      // Mark that ad watching is complete
+      setState(() {
+        _isWatchingAd = false;
+      });
+      // Ensure dialog is dismissed even on error
+      if (mounted && dialogShown) {
+        Navigator.of(context).pop();
+      }
+      // Resume timer on error - continue from where it was paused
+      if (mounted && !_answered) {
+        _timerController.forward();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error loading ad. Please try again.'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  void _applyFiftyFifty() {
+    if (_currentQuestionIndex >= _questions.length) return;
+    final question = _questions[_currentQuestionIndex];
+
+    // Get wrong answer indices (all except correct one)
+    final wrongIndices = <int>[];
+    for (int i = 0; i < question.options.length; i++) {
+      if (i != question.correctIndex) {
+        wrongIndices.add(i);
+      }
+    }
+
+    // Randomly select 2 wrong answers to hide
+    wrongIndices.shuffle();
+    final toHide = wrongIndices.take(2).toSet();
+
+    setState(() {
+      _fiftyFiftyUsed = true;
+      _hiddenOptions = toHide;
+    });
+  }
+
+  Future<void> _showFiveSecondPrompt() async {
+    if (!mounted || _answered) return;
+
+    final premiumService = context.read<PremiumService>();
+    if (premiumService.isPremium) {
+      // Premium users get extra time automatically
+      _addExtraTime();
+      return;
+    }
+
+    final shouldAddTime = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: AppTheme.darkCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.amber.withOpacity(0.5), width: 2),
+          ),
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.timer_off, color: Colors.amber, size: 32),
+              const SizedBox(width: 12),
+              Text(
+                'Time Running Out!',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Colors.amber,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red, width: 2),
+                ),
+                child: Text(
+                  'Only 5 seconds left!',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                      ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Watch a short ad to get +30 seconds and continue!',
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Colors.white70,
+                    ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+          actionsAlignment: MainAxisAlignment.spaceEvenly,
+          actions: <Widget>[
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(false);
+                // Resume timer
+                if (mounted && !_answered) {
+                  _timerController.forward();
+                }
+              },
+              child: Text(
+                'No Thanks',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: Colors.white60,
+                    ),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.add_alarm, color: AppTheme.darkBg),
+              label: Text(
+                '+30s (Ad)',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppTheme.darkBg,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.amber,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldAddTime == true) {
+      // Timer is already paused from the 5-second check
+      // Mark that we're watching an ad (prevents timeout)
+      setState(() {
+        _isWatchingAd = true;
+      });
+      
+      // Show loading dialog
+      if (!mounted) return;
+      bool dialogShown = false;
+      
+      try {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const AdLoadingDialog(
+            message: 'Loading ad...',
+          ),
+        );
+        dialogShown = true;
+
+        final adService = context.read<AdService>();
+        final adShown = await Future.any([
+          adService.showTryAgainAd(),
+          Future.delayed(const Duration(seconds: 15), () => false), // 15 second timeout
+        ]);
+
+        // Always dismiss loading dialog
+        if (mounted && dialogShown) {
+          Navigator.of(context).pop();
+          dialogShown = false;
+        }
+
+        // Mark that ad watching is complete
+        setState(() {
+          _isWatchingAd = false;
+        });
+
+        if (adShown) {
+          // Ad watched successfully - add extra time
+          // Timer is at 5 seconds, adding 30 makes it 35 seconds total
+          _addExtraTime();
+          // Timer will resume automatically in _addExtraTime() via forward()
+          // It will count down from 35 seconds
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✓ +30 seconds added! Timer continues from 35 seconds.'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } else {
+          // Resume timer if ad failed
+          if (mounted && !_answered) {
+            _timerController.forward();
+          }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Unable to load ad. Timer resumed.'),
+                backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        }
+      } catch (e) {
+        debugPrint('❌ Error in 5-second prompt ad: $e');
+        // Mark that ad watching is complete
+        setState(() {
+          _isWatchingAd = false;
+        });
+        // Ensure dialog is dismissed even on error
+        if (mounted && dialogShown) {
+          Navigator.of(context).pop();
+        }
+        // Resume timer on error
+        if (mounted && !_answered) {
+          _timerController.forward();
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Error loading ad. Timer resumed.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } else {
+      // Resume timer if user declined
+      if (mounted && !_answered) {
+        _timerController.forward();
+      }
+    }
+  }
+
   void _nextQuestion() {
     setState(() {
       _currentQuestionIndex++;
@@ -674,12 +1333,17 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
       _timeRemaining = 15;
       _doublePointsActive = false;
       _triedWrongOptions.clear(); // Clear for new question
+      _extraTimeUsed = false; // Reset extra time for next question
+      _fiftyFiftyUsed = false; // Reset 50/50 for next question
+      _hiddenOptions.clear(); // Clear hidden options
+      _fiveSecondPromptShown = false; // Reset 5-second prompt for next question
+      _isWatchingAd = false; // Reset ad watching flag
     });
     _questionTransitionController.forward(from: 0.0);
     _timerController.forward(from: 0.0);
   }
 
-  void _finishRound() async {
+  Future<void> _finishRound() async {
     final maxScore = _questions.length * (widget.round.difficulty.baseScore + 75); // Max time bonus
     
     // Calculate stars earned
@@ -694,18 +1358,66 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     final roundId = widget.round.roundNumber.toString();
     
     // Complete the round locally first - this unlocks the next round immediately
+    // Access the service BEFORE any navigation to ensure context is valid
     if (widget.isEducationMode && widget.gradeLevel != null) {
-      context.read<EducationCampaignService>().completeRound(
-        roundNumber: widget.round.roundNumber,
-        score: _score,
-        maxScore: maxScore,
-      );
+      // EducationCampaignService is provided at CampaignScreen level
+      // Since CampaignGameScreen is pushed from CampaignScreen, it should have access
+      try {
+        final educationService = context.read<EducationCampaignService>();
+        educationService.completeRound(
+          roundNumber: widget.round.roundNumber,
+          score: _score,
+          maxScore: maxScore,
+        );
+        debugPrint('✅ Round completed in EducationCampaignService');
+      } catch (e) {
+        debugPrint('⚠️ Could not access EducationCampaignService: $e');
+        // Try Provider.of as fallback
+        try {
+          final educationService = Provider.of<EducationCampaignService>(
+            context,
+            listen: false,
+          );
+          educationService.completeRound(
+            roundNumber: widget.round.roundNumber,
+            score: _score,
+            maxScore: maxScore,
+          );
+          debugPrint('✅ Round completed in EducationCampaignService (via Provider.of)');
+        } catch (e2) {
+          debugPrint('⚠️ Could not access EducationCampaignService with Provider.of: $e2');
+          debugPrint('⚠️ Round completion will be handled by backend');
+        }
+      }
     } else {
-      context.read<CampaignService>().completeRound(
-        roundNumber: widget.round.roundNumber,
-        score: _score,
-        maxScore: maxScore,
-      );
+      // CampaignService is provided at app level, should always be available
+      try {
+        final campaignService = context.read<CampaignService>();
+        campaignService.completeRound(
+          roundNumber: widget.round.roundNumber,
+          score: _score,
+          maxScore: maxScore,
+        );
+        debugPrint('✅ Round completed in CampaignService');
+      } catch (e) {
+        debugPrint('⚠️ Could not access CampaignService: $e');
+        // Try Provider.of as fallback
+        try {
+          final campaignService = Provider.of<CampaignService>(
+            context,
+            listen: false,
+          );
+          campaignService.completeRound(
+            roundNumber: widget.round.roundNumber,
+            score: _score,
+            maxScore: maxScore,
+          );
+          debugPrint('✅ Round completed in CampaignService (via Provider.of)');
+        } catch (e2) {
+          debugPrint('⚠️ Could not access CampaignService with Provider.of: $e2');
+          debugPrint('⚠️ Round completion will be handled by backend');
+        }
+      }
     }
     
     // Send scores to backend in background (non-blocking)
@@ -735,26 +1447,213 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
     context.read<UserProvider>().addCoins(coinsEarned);
 
     // Navigate to results immediately - don't wait for backend
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            CampaignResultsScreen(
-          round: widget.round,
-          score: _score,
-          correctAnswers: _correctAnswers,
-          totalQuestions: _questions.length,
-          coinsEarned: coinsEarned,
-          isEducationMode: widget.isEducationMode,
-          gradeLevel: widget.gradeLevel,
-        ),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          return FadeTransition(opacity: animation, child: child);
-        },
-        transitionDuration: const Duration(milliseconds: 300),
-      ),
-    );
+    if (!mounted) {
+      debugPrint('⚠️ Widget not mounted, cannot navigate');
+      return;
+    }
+    
+    // Remove overlay first - do this synchronously
+    _removeLoadingResultsOverlay();
+    
+    // Small delay to ensure overlay removal is processed
+    await Future.delayed(const Duration(milliseconds: 50));
+    
+    if (!mounted) {
+      debugPrint('⚠️ Widget not mounted after removing overlay');
+      return;
+    }
+    
+    debugPrint('🚀 Navigating to results screen (education: ${widget.isEducationMode}, grade: ${widget.gradeLevel})...');
+    debugPrint('📊 Score: $_score, Correct: $_correctAnswers/${_questions.length}, Coins: $coinsEarned');
+    
+    try {
+      // If education mode, we need to provide EducationCampaignService to CampaignResultsScreen
+      if (widget.isEducationMode && widget.gradeLevel != null) {
+        // Get the service from context (it should be available from CampaignGameScreen)
+        EducationCampaignService? educationService;
+        try {
+          educationService = context.read<EducationCampaignService>();
+        } catch (e) {
+          debugPrint('⚠️ Could not read EducationCampaignService from context: $e');
+          // Try Provider.of as fallback
+          try {
+            educationService = Provider.of<EducationCampaignService>(
+              context,
+              listen: false,
+            );
+          } catch (e2) {
+            debugPrint('❌ Could not access EducationCampaignService: $e2');
+          }
+        }
+        
+        if (educationService != null) {
+          // Wrap with provider
+          final serviceToPass = educationService; // Non-null assertion since we checked
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => ChangeNotifierProvider<EducationCampaignService>.value(
+                value: serviceToPass,
+                child: CampaignResultsScreen(
+                  round: widget.round,
+                  score: _score,
+                  correctAnswers: _correctAnswers,
+                  totalQuestions: _questions.length,
+                  coinsEarned: coinsEarned,
+                  isEducationMode: widget.isEducationMode,
+                  gradeLevel: widget.gradeLevel,
+                ),
+              ),
+            ),
+          );
+        } else {
+          // Fallback: navigate without provider (will show error but won't crash)
+          await Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (_) => CampaignResultsScreen(
+                round: widget.round,
+                score: _score,
+                correctAnswers: _correctAnswers,
+                totalQuestions: _questions.length,
+                coinsEarned: coinsEarned,
+                isEducationMode: widget.isEducationMode,
+                gradeLevel: widget.gradeLevel,
+              ),
+            ),
+          );
+        }
+      } else {
+        // Normal campaign mode - navigate directly
+        await Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => CampaignResultsScreen(
+              round: widget.round,
+              score: _score,
+              correctAnswers: _correctAnswers,
+              totalQuestions: _questions.length,
+              coinsEarned: coinsEarned,
+              isEducationMode: widget.isEducationMode,
+              gradeLevel: widget.gradeLevel,
+            ),
+          ),
+        );
+      }
+      debugPrint('✅ Navigation to results screen completed');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error navigating to results: $e');
+      debugPrint('❌ Stack trace: $stackTrace');
+      // Fallback navigation - try with root navigator
+      if (mounted) {
+        try {
+          // If education mode, try to get service and wrap
+          if (widget.isEducationMode && widget.gradeLevel != null) {
+            try {
+              final fallbackService = context.read<EducationCampaignService>();
+              await Navigator.of(context, rootNavigator: true).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => ChangeNotifierProvider<EducationCampaignService>.value(
+                    value: fallbackService,
+                    child: CampaignResultsScreen(
+                      round: widget.round,
+                      score: _score,
+                      correctAnswers: _correctAnswers,
+                      totalQuestions: _questions.length,
+                      coinsEarned: coinsEarned,
+                      isEducationMode: widget.isEducationMode,
+                      gradeLevel: widget.gradeLevel,
+                    ),
+                  ),
+                ),
+              );
+            } catch (e3) {
+              // Service not available, navigate without provider
+              await Navigator.of(context, rootNavigator: true).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => CampaignResultsScreen(
+                    round: widget.round,
+                    score: _score,
+                    correctAnswers: _correctAnswers,
+                    totalQuestions: _questions.length,
+                    coinsEarned: coinsEarned,
+                    isEducationMode: widget.isEducationMode,
+                    gradeLevel: widget.gradeLevel,
+                  ),
+                ),
+              );
+            }
+          } else {
+            await Navigator.of(context, rootNavigator: true).pushReplacement(
+              MaterialPageRoute(
+                builder: (_) => CampaignResultsScreen(
+                  round: widget.round,
+                  score: _score,
+                  correctAnswers: _correctAnswers,
+                  totalQuestions: _questions.length,
+                  coinsEarned: coinsEarned,
+                  isEducationMode: widget.isEducationMode,
+                  gradeLevel: widget.gradeLevel,
+                ),
+              ),
+            );
+          }
+          debugPrint('✅ Fallback navigation with root navigator completed');
+        } catch (e2) {
+          debugPrint('❌ Fallback navigation also failed: $e2');
+          // Last resort - try without await
+          if (mounted) {
+            if (widget.isEducationMode && widget.gradeLevel != null) {
+              try {
+                final lastResortService = context.read<EducationCampaignService>();
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => ChangeNotifierProvider<EducationCampaignService>.value(
+                      value: lastResortService,
+                      child: CampaignResultsScreen(
+                        round: widget.round,
+                        score: _score,
+                        correctAnswers: _correctAnswers,
+                        totalQuestions: _questions.length,
+                        coinsEarned: coinsEarned,
+                        isEducationMode: widget.isEducationMode,
+                        gradeLevel: widget.gradeLevel,
+                      ),
+                    ),
+                  ),
+                );
+              } catch (e4) {
+                // Final fallback without provider
+                Navigator.of(context).pushReplacement(
+                  MaterialPageRoute(
+                    builder: (_) => CampaignResultsScreen(
+                      round: widget.round,
+                      score: _score,
+                      correctAnswers: _correctAnswers,
+                      totalQuestions: _questions.length,
+                      coinsEarned: coinsEarned,
+                      isEducationMode: widget.isEducationMode,
+                      gradeLevel: widget.gradeLevel,
+                    ),
+                  ),
+                );
+              }
+            } else {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => CampaignResultsScreen(
+                    round: widget.round,
+                    score: _score,
+                    correctAnswers: _correctAnswers,
+                    totalQuestions: _questions.length,
+                    coinsEarned: coinsEarned,
+                    isEducationMode: widget.isEducationMode,
+                    gradeLevel: widget.gradeLevel,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+      }
+    }
   }
   
   /// Send round completion to backend in background (non-blocking)
@@ -978,10 +1877,12 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
               const SizedBox(height: 24),
               // Question
               Expanded(
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
+                child: Stack(
+                  children: [
+                    SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
                       // Question text with hint button
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -998,7 +1899,7 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                               textAlign: TextAlign.center,
                             ),
                           ),
-                          // Hint button
+                          // Hint button (keep hint button in question area)
                           if (!_answered && question.hint != null && question.hint!.isNotEmpty)
                             IconButton(
                               icon: Icon(
@@ -1076,6 +1977,11 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                         final index = entry.key;
                         final option = entry.value;
                         final isTriedWrong = _triedWrongOptions.contains(index);
+                        
+                        // Hide options removed by 50/50 (unless answered)
+                        if (!_answered && _hiddenOptions.contains(index)) {
+                          return const SizedBox.shrink();
+                        }
                         
                         Color? optionColor;
                         bool isDisabled = false;
@@ -1225,8 +2131,160 @@ class _CampaignGameScreenState extends State<CampaignGameScreen>
                     ],
                   ),
                 ),
+                // Blur overlay when wrong answer dialog is showing
+                if (_showWrongAnswerDialog)
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+                      child: Container(
+                        color: Colors.black.withOpacity(0.3),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+  ]),
+        ),
+      ),
+      bottomNavigationBar: _buildLifelinesBar(),
+    );
+  }
+
+  Widget _buildLifelinesBar() {
+    if (_answered) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppTheme.darkBg,
+            AppTheme.darkBg.withOpacity(0.95),
+            AppTheme.darkBg,
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      child: SafeArea(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            // Extra Time Lifeline
+            _buildLifelineButton(
+              icon: Icons.add_alarm,
+              label: '+30s',
+              gradient: const LinearGradient(
+                colors: [Color(0xFFFFB347), Color(0xFFFF6B35)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-            ],
+              isUsed: _extraTimeUsed,
+              onTap: _handleExtraTime,
+              tooltip: 'Get 30 extra seconds',
+            ),
+            // 50/50 Lifeline
+            _buildLifelineButton(
+              icon: Icons.cancel_outlined,
+              label: '50:50',
+              gradient: const LinearGradient(
+                colors: [Color(0xFF9D4EDD), Color(0xFF7209B7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              isUsed: _fiftyFiftyUsed,
+              onTap: _handleFiftyFifty,
+              tooltip: 'Remove 2 wrong answers',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLifelineButton({
+    required IconData icon,
+    required String label,
+    required Gradient gradient,
+    required bool isUsed,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Tooltip(
+          message: tooltip,
+          child: GestureDetector(
+            onTap: isUsed ? null : onTap,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              height: 60,
+              decoration: BoxDecoration(
+                gradient: isUsed
+                    ? LinearGradient(
+                        colors: [
+                          Colors.grey.withOpacity(0.3),
+                          Colors.grey.withOpacity(0.2),
+                        ],
+                      )
+                    : gradient,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isUsed
+                      ? Colors.grey.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.3),
+                  width: 2,
+                ),
+                boxShadow: isUsed
+                    ? []
+                    : [
+                        BoxShadow(
+                          color: gradient.colors.first.withOpacity(0.4),
+                          blurRadius: 15,
+                          spreadRadius: 2,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    icon,
+                    color: isUsed ? Colors.grey : Colors.white,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: isUsed ? Colors.grey : Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  if (isUsed) ...[
+                    const SizedBox(width: 6),
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.grey,
+                      size: 18,
+                    ),
+                  ],
+                ],
+              ),
+            ),
           ),
         ),
       ),
